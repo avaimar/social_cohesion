@@ -19,6 +19,7 @@
 
 # RStudio files
 .Rproj.user/
+student_loan_nudges.Rproj
 
 # produced vignettes
 vignettes/*.html
