@@ -1,2 +1,2 @@
-# student_loan_nudges
-Stanford's ECON 293: Reanalysis of 'Student Loan Nudges: Experimental Evidence on Borrowing and Educational Attainment'
+# A Reanalysis of Building Social Cohesion in Ethnically Mixed Schools: An Intervention on Perspective Taking
+Stanford's ECON 293: Reanalysis of 'Building Social Cohesion in Ethnically Mixed Schools: An Intervention on Perspective Taking'
