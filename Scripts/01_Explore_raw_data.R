@@ -83,6 +83,9 @@ rm(SC_absenteeism)
 # Spillovers
 SC_Data_schools <- SC_Data_schools[, spill := events - perpetrator]
 
+# 2.3 Export processed data -------------------------
+fwrite(SC_Data, file='Data/Processed_data/ABGK_recreated_variables.csv')
+
 # 3. Replicate tables ----------------------------
 # Table 3: Treatment effects of Peer Violence and Victimization-Diary Records -----
 m.table3.1 <- lm(formula = 'perpetrator ~ treatment + b_schoolsize + n_class + srefshare + 
@@ -111,18 +114,18 @@ m.table8.2 <- lm(formula  = paste0('fdonation_perc ~ a2*treatment + factor(bstra
 
 # Table 12: HTE on Altruism ---------------------------------
 # TODO Pending to add clustered Standard Errors for SEs to match table.
-m.table12.1 <- lm(formula  = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
+m.table12.1 <- lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
                                     controls),
                  data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.2 <- lm(formula  = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
+m.table12.2 <- lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
                                     controls),
                  data = SC_Data, subset = SC_Data$refugee == 1)
 
-m.table12.3 <- lm(formula  = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
+m.table12.3 <- lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
                                     controls),
                   data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.4 <- lm(formula  = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
+m.table12.4 <- lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
                                     controls),
                   data = SC_Data, subset = SC_Data$refugee == 1)
