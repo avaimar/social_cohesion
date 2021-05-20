@@ -12,10 +12,10 @@ SC_Data <- haven::read_dta('Data/Raw_Data/AlanBaysanGumrenKubilay_final.dta')
 SC_Data <- as.data.table(SC_Data)
 
 # 2. Clean data -----------------------------------------
-str(SC_Data)
+#str(SC_Data)
 
 # Check missing values
-colSums(is.na(SC_Data))
+#colSums(is.na(SC_Data))
 
 # Define controls
 # Note: In do file they define 'age' instead of 'ageinm'
@@ -34,8 +34,8 @@ SC_Data <- SC_Data[, fdonation := ifelse(is.na(fdonation_a1) & is.na(fdonation_a
 SC_Data <- SC_Data[, fdonation_perc := fdonation / 4]
 
 # Ethnicity reference dummy
-SC_Data <- SC_Data[, a2 := ifelse(!is.na(fdonation_a2), 1, 0)] # TODO Verify this !
-SC_Data <- SC_Data[, a2 := ifelse(!is.na(fdonation_a1), 0, a2)] # TODO  Verify this !
+SC_Data <- SC_Data[, a2 := ifelse(!is.na(fdonation_a2), 1, 0)] 
+SC_Data <- SC_Data[, a2 := ifelse(!is.na(fdonation_a1), 0, a2)] 
 
 # Willingness to donate at Endline
 SC_Data <- SC_Data[, fdonate := ifelse(!is.na(fdonation), 0, NA)]
