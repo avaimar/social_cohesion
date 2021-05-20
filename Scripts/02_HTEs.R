@@ -87,8 +87,6 @@ m.table12.4 <-
 
 
 # 2.2 AIPW scores and regressing on subgroup membership ------------
-# TODO Check how we correct for clusters, this is done in Wager & Athey (2019)
-
 
 # Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
 
@@ -162,5 +160,6 @@ altruism.covariate.grid <- c(0, 1)
 
 # 4. Comparison of heterogeneity at the school vs. student levels --------
 
+# 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 8) -------------
 
 
