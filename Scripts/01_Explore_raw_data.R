@@ -19,10 +19,23 @@ SC_Data <- as.data.table(SC_Data)
 
 # Define controls
 # Note: In do file they define 'age' instead of 'ageinm'
-# Note: Pending braven_sd beyes_sd f_csize
-controls <- 'ageinm + male + refugee + astudent + b_schoolsize'
+controls <- 'ageinm + male + refugee + astudent + b_schoolsize + braven_sd + beyes_sd + f_csize'
 
 # 2.1 Recreate child-level variables ---------------------------------
+# Age
+# TODO: How is this created from ageinm?
+
+# Raven Score braven_sd
+SC_Data <- SC_Data[, braven_sd := (braven - mean(braven, na.rm=TRUE)) /sd(braven, na.rm=TRUE)]
+
+# Eyes Test Score beyes_sd
+SC_Data <- SC_Data[, beyes_sd := (beyes_correct - mean(beyes_correct, na.rm=TRUE)) /
+                     sd(beyes_correct, na.rm=TRUE)]
+
+# Willingness to donate at baseline
+SC_Data <- SC_Data[, bdonation_sd := (bdonation - mean(bdonation, na.rm=TRUE)) /
+                     sd(bdonation, na.rm=TRUE)]
+
 # Create donation variables that account for missings
 SC_Data <- SC_Data[, fdonation_a1_m := ifelse(is.na(fdonation_a1), 0, fdonation_a1)]
 SC_Data <- SC_Data[, fdonation_a2_m := ifelse(is.na(fdonation_a2), 0, fdonation_a2)]
@@ -56,7 +69,8 @@ SC_Data_schools <- SC_Data[, .(
   victim = head(victim, 1),
   events = head(events, 1),
   treatment = head(treatment, 1), 
-  b_schoolsize = .N,
+  bstudentnum_2 = max(bstudentnum_2, na.rm = TRUE),
+  bstudentnum_3 = max(bstudentnum_3, na.rm = TRUE),
   n_class = uniqueN(b_classid),
   bactive_syrian_2 = head(bactive_syrian_2, 1), 
   bactive_syrian_3 = head(bactive_syrian_3, 1),
@@ -65,6 +79,16 @@ SC_Data_schools <- SC_Data[, .(
   ), by = .(b_schoolid)]
 
 # Construct additional school-level covariates used in regressions
+# School size
+SC_Data_schools <- SC_Data_schools[, b_schoolsize := bstudentnum_2 + bstudentnum_3]
+
+# Endline Class size
+SC_Data_classes <- SC_Data[, .(fgonesum = sum(fgone),
+                               f_csize = .N), by = .(f_classid)]
+SC_Data_classes <- SC_Data_classes[, f_csize := f_csize - fgonesum]
+SC_Data <- merge(SC_Data, SC_Data_classes[, .(f_classid, f_csize)], by ='f_classid')
+SC_Data <- SC_Data[, f_csize := ifelse(fgone == 1, NA, f_csize)]
+
 # Share of Syrian refugees in school
 SC_Data_schools <- SC_Data_schools[, srefshare := (bactive_syrian_2 + bactive_syrian_3) / b_schoolsize]
 
@@ -77,13 +101,24 @@ SC_Data_schools <- SC_Data_schools[, absenteeism_school := absent_sumschool / b_
 SC_Data_schools <- 
   SC_Data_schools[, absent_tert := xtile(absenteeism_school, n = 3), by = .(b_provinceid)]
 SC_Data_schools <- SC_Data_schools[, bstrata := b_provinceid * 10 + absent_tert]
-SC_Data <- merge(SC_Data, SC_Data_schools[, .(b_schoolid, bstrata, b_schoolsize)], by ='b_schoolid')
-rm(SC_absenteeism)
 
 # Spillovers
 SC_Data_schools <- SC_Data_schools[, spill := events - perpetrator]
 
-# 2.3 Export processed data -------------------------
+# Add to recreated variables to main data.table
+SC_Data <- merge(SC_Data, SC_Data_schools[, .(b_schoolid, bstrata, b_schoolsize, spill)], by ='b_schoolid')
+rm(SC_absenteeism)
+
+# 2.3 Imputation ----------------------------------------------------
+# Authors mpute missing values using the median for the following variables:
+# age bdonation_sd braven_sd beyes_sd bimpulsivity_sd bethnicbias_sd bempathy_pt_sd bempathy_ec_sd 
+# bmath_sd bturk_sd bcpayoff bnode_in_friend bnode_in_support bnode_in_study bnode_in_supportself 
+# bnode_in_studyself bstudyself_total_host bfriend_total_host bsupportself_total_host
+SC_Data <- SC_Data[, bdonation_sd := ifelse(is.na(bdonation_sd), median(bdonation_sd, na.rm=TRUE), bdonation_sd)]
+SC_Data <- SC_Data[, braven_sd := ifelse(is.na(braven_sd), median(braven_sd, na.rm=TRUE), braven_sd)]
+SC_Data <- SC_Data[, beyes_sd := ifelse(is.na(beyes_sd), median(beyes_sd, na.rm=TRUE), beyes_sd)]
+
+# 2.4 Export processed data -------------------------
 fwrite(SC_Data, file='Data/Processed_data/ABGK_recreated_variables.csv')
 
 # 3. Replicate tables ----------------------------
@@ -105,27 +140,27 @@ m.table3.4 <- lm(formula = 'spill ~ treatment + b_schoolsize + n_class + srefsha
                  data = SC_Data_schools)
 
 # Table 8:  Treatment Effects on Altruism --------------------
-# TODO Note: what is bdonation_sd ? Also pending to add clustered Standard Errors for SEs to match table.
-m.table8.1 <- lm(formula  = paste0('fdonate ~ a2*treatment + factor(bstrata) +', controls),
+# TODO Note: Pending to add clustered Standard Errors for SEs to match table.
+m.table8.1 <- lm(formula  = paste0('fdonate ~ a2*treatment + factor(bstrata) + bdonation_sd +', controls),
                     data = SC_Data)
 
-m.table8.2 <- lm(formula  = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) +', controls),
+m.table8.2 <- lm(formula  = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + bdonation_sd +', controls),
                  data = SC_Data)
 
 # Table 12: HTE on Altruism ---------------------------------
 # TODO Pending to add clustered Standard Errors for SEs to match table.
-m.table12.1 <- lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                                    controls),
+m.table12.1 <- lm(formula = paste0(
+  'fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
                  data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.2 <- lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                                    controls),
+m.table12.2 <- lm(formula = paste0(
+  'fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid)  + bdonation_sd +', controls),
                  data = SC_Data, subset = SC_Data$refugee == 1)
 
-m.table12.3 <- lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                                    controls),
+m.table12.3 <- lm(formula = paste0(
+  'fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
                   data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.4 <- lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                                    controls),
+m.table12.4 <- lm(formula = paste0(
+  'fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
                   data = SC_Data, subset = SC_Data$refugee == 1)

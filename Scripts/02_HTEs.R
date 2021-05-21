@@ -6,9 +6,11 @@ library(data.table)
 library(ggplot2)
 library(grf)
 library(statar)
+library(stringr)
 
-# Parameters
-controls <- 'ageinm + male + refugee + astudent + b_schoolsize'
+# Global controls defined by authors at the student-level
+# Please write below formula without spaces
+controls <- 'ageinm+male+refugee+astudent+b_schoolsize+braven_sd+beyes_sd+f_csize'
 
 # Helper functions
 generate_X_Y_W_C <- function(outcome, covariates) {
@@ -48,7 +50,6 @@ generate_X_Y_W_C <- function(outcome, covariates) {
 # 1. Load processed data ------------------------------------
 SC_Data <- fread('Data/Processed_Data/ABGK_recreated_variables.csv')
 
-
 # 2. Pre-specified hypotheses ----------------------
 # Social cohesion paper posits 3 subgroups: refugee status, gender and emotional intelligence
 
@@ -63,25 +64,21 @@ SC_Data <- fread('Data/Processed_Data/ABGK_recreated_variables.csv')
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
 
 # Outcome 4: Altruism
-m.table12.1 <- 
-  lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                      controls),
-     data = SC_Data, subset = SC_Data$refugee == 0)
+m.table12.1 <- lm(formula = paste0(
+  'fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.2 <- 
-  lm(formula = paste0('fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid) +',
-                      controls),
-     data = SC_Data, subset = SC_Data$refugee == 1)
+m.table12.2 <- lm(formula = paste0(
+  'fdonate ~ a2*treatment + factor(bstrata) + factor(b_districtid)  + bdonation_sd +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 1)
 
-m.table12.3 <- 
-  lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                      controls),
-     data = SC_Data, subset = SC_Data$refugee == 0)
+m.table12.3 <- lm(formula = paste0(
+  'fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 0)
 
-m.table12.4 <- 
-  lm(formula = paste0('fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) +', 
-                      controls),
-     data = SC_Data, subset = SC_Data$refugee == 1)
+m.table12.4 <- lm(formula = paste0(
+  'fdonation_perc ~ a2*treatment + factor(bstrata) + factor(b_districtid) + bdonation_sd +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 1)
 
 # Outcome 5: Achievement Tests
 
@@ -124,7 +121,7 @@ m.table12.4 <-
 
 # * 3.2.4 Outcome 4: Altruism -------------------------------
 # Define covariates
-altruism.covariates <- c('ageinm', 'male', 'refugee', 'astudent', 'b_schoolsize')
+altruism.covariates <- c('bdonation_sd', strsplit(controls, split='\\+')[[1]])
 
 # Fit causal tree
 altruism_list <- 
