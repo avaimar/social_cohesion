@@ -6,6 +6,8 @@ library(data.table)
 library(ggplot2)
 library(grf)
 library(haven) # read .dta files
+library(lmtest)
+library(sandwich)
 library(statar)
 library(stringr)
 
@@ -38,9 +40,9 @@ generate_X_Y_W_C <- function(outcome, covariates) {
   C <- data[, .(b_schoolid)]
   
   # Format Y, W, C as numeric vectors
-  W <- W[[1]]
-  Y <- Y[[1]]
-  C <- C[[1]]
+  W <- as.numeric(W[[1]])
+  Y <- as.numeric(Y[[1]])
+  C <- as.numeric(C[[1]])
   
   list(X = X,Y = Y, W = W, C = C)
 }
@@ -159,12 +161,12 @@ m.table13.4 <- lm(formula = paste0(
 # * 3.2.3 Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation ----------------
 
 # * 3.2.4 Outcome 4: Altruism -------------------------------
+# * fdonate outcome
 # Fit causal tree
-altruism_list <- 
-  generate_X_Y_W_C(outcome = 'fdonate', covariates = altruism.covariates)
-altruism.cf <- 
-  causal_forest(X = altruism_list$X, Y = altruism_list$Y, 
-                W = altruism_list$W, clusters = altruism_list$C)
+altruism_list <- generate_X_Y_W_C(outcome = 'fdonate', covariates = altruism.covariates)
+altruism.n <- dim(altruism_list$X)[1]
+altruism.cf <- causal_forest(X = altruism_list$X, Y = altruism_list$Y, 
+                             W = altruism_list$W, clusters = altruism_list$C)
 
 # CATE histogram 
 altruism.tau.hat <- predict(altruism.cf)$predictions
@@ -175,11 +177,22 @@ altruism.var_imp <- c(variable_importance(altruism.cf))
 names(altruism.var_imp) <- altruism.covariates # TODO What IS NA? The clusters?
 altruism.sorted_var_imp <- sort(altruism.var_imp, decreasing = TRUE)
 
+# Data-driven subgroups
+# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
+
 # Best linear projection
 best_linear_projection(altruism.cf, altruism_list$X)
 
 # Calibration
 test_calibration(altruism.cf)
+
+# Compare regions with above/below median CATEs (from Wager & Athey)
+high_effect <- altruism.tau.hat > median(altruism.tau.hat)
+ate.high <- average_treatment_effect( altruism.cf , subset = high_effect )
+ate.low <- average_treatment_effect( altruism.cf, subset =! high_effect )
+paste ("95% CI for difference in ATE:",
+       round(ate.high[1] - ate.low[1] , 3) , "+/-",
+       round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
 
 # Partial dependence
 altruism.selected.covariate <- 'refugee'
@@ -190,9 +203,45 @@ altruism.covariate.grid <- c(0, 1)
 # TODO pending partial dependence
 
 # * 3.2.5 Outcome 5: Achievement Tests --------------------------------
+# Fit causal tree
+achievement_list <- generate_X_Y_W_C(outcome = 'fturk_sd', covariates = achievement.covariates)
+achievement.n <- dim(achievement_list$X)[1]
+achievement.cf <- causal_forest(X = achievement_list$X, Y = achievement_list$Y, 
+                             W = achievement_list$W, clusters = achievement_list$C)
 
-# 4. Comparison of heterogeneity at the school vs. student levels --------
+# CATE histogram 
+achievement.tau.hat <- predict(achievement.cf)$predictions
+hist(achievement.tau.hat, main="Achievement outcome: CATE estimates", freq=F)
 
-# 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 8) -------------
+# Variable importance
+achievement.var_imp <- c(variable_importance(achievement.cf))
+names(achievement.var_imp) <- achievement.covariates # TODO What IS NA? The clusters?
+achievement.sorted_var_imp <- sort(achievement.var_imp, decreasing = TRUE)
+
+# Data-driven subgroups
+# TODO pending
+
+# Best linear projection
+best_linear_projection(achievement.cf, achievement_list$X)
+
+# Calibration
+test_calibration(achievement.cf)
+
+# Compare regions with above/below median CATEs (from Wager & Athey)
+high_effect <- achievement.tau.hat > median(achievement.tau.hat)
+ate.high <- average_treatment_effect( achievement.cf , subset = high_effect )
+ate.low <- average_treatment_effect( achievement.cf, subset =! high_effect )
+paste ("95% CI for difference in ATE:",
+       round(ate.high[1] - ate.low[1] , 3) , "+/-",
+       round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
+
+# 4. Comparison of heterogeneity at the school vs. student levels Wager & Athey (2019; p. 9) --------
+
+# Outcome 4: Altruism
+# We can evaluate the refugee hypothesis by looking at the share of refugee/host students in the school
+
+
+
+# 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
 
 
