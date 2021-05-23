@@ -1,16 +1,14 @@
 ## Script: 02_HTEs.R ------------------------------------
 
 
-# 0. Working setup ---------------------------------
+# Working setup ---------------------------------
 library(data.table)
 library(ggplot2)
 library(grf)
+library(haven) # read .dta files
 library(statar)
 library(stringr)
 
-# Global controls defined by authors at the student-level
-# Please write below formula without spaces
-controls <- 'ageinm+male+refugee+astudent+b_schoolsize+braven_sd+beyes_sd+f_csize'
 
 # Helper functions
 generate_X_Y_W_C <- function(outcome, covariates) {
@@ -47,8 +45,33 @@ generate_X_Y_W_C <- function(outcome, covariates) {
   list(X = X,Y = Y, W = W, C = C)
 }
 
+get_AIPW_scores <- function(outcome, covariates) {
+  # TODO Jake
+}
+
+# 0. Parameters ------------------------------------
+
+# Global controls defined by authors at the student-level
+# Please write below formula without spaces
+controls <- 'ageinm+male+refugee+astudent+b_schoolsize+braven_sd+beyes_sd+f_csize'
+controls_vec <- strsplit(controls, split='\\+')[[1]]
+
+# Define controls used for each outcome (this adds any controls that are specific to an outcome)
+# Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
+
+# Outcome 2: Social Exclusion
+
+# Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
+
+# Outcome 4: Altruism
+altruism.covariates <- c('bdonation_sd', controls_vec)
+
+# Outcome 5: Achievement Tests
+achievement.covariates <- c(controls_vec)
+
 # 1. Load processed data ------------------------------------
-SC_Data <- fread('Data/Processed_Data/ABGK_recreated_variables.csv')
+SC_Data <- haven::read_dta('Data/Processed_Data/JS_Stata_Processed.dta')
+SC_Data <- as.data.table(SC_Data)
 
 # 2. Pre-specified hypotheses ----------------------
 # Social cohesion paper posits 3 subgroups: refugee status, gender and emotional intelligence
@@ -81,21 +104,38 @@ m.table12.4 <- lm(formula = paste0(
   data = SC_Data, subset = SC_Data$refugee == 1)
 
 # Outcome 5: Achievement Tests
+m.table13.1 <- lm(formula = paste0(
+  'fturk_sd ~ treatment + bturk_sd + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 0)
 
+m.table13.2 <- lm(formula = paste0(
+  'fturk_sd ~ treatment + bturk_sd + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 1)
+
+m.table13.3 <- lm(formula = paste0(
+  'fmath_sd ~ treatment + bmath_sd + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 0)
+
+m.table13.4 <- lm(formula = paste0(
+  'fmath_sd ~ treatment + bmath_sd + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data, subset = SC_Data$refugee == 1)
 
 # 2.2 AIPW scores and regressing on subgroup membership ------------
 
 # Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
+#get_AIPW_scores()
 
 # Outcome 2: Social Exclusion
+#get_AIPW_scores()
 
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
+#get_AIPW_scores()
 
 # Outcome 4: Altruism
-#fmla <- paste0('fdonate ~ ')
-#causal_forest( clusters = SC_Data$b_schoolid)
+#altruism.aipw.scores <- get_AIPW_scores(outcome = 'fdonate', covariates = altruism.covariates)
 
 # Outcome 5: Achievement Tests
+#achievement.aipw.scores <- get_AIPW_scores(outcome = 'fturk_sd', covariates = altruism.covariates)
 
 # 3. Data-driven hypotheses ----------------------------
 # 3.1 Causal trees with clustering as in Athey & Wager (2019) ------------
@@ -108,7 +148,6 @@ m.table12.4 <- lm(formula = paste0(
 
 # Outcome 4: Altruism
 
-
 # Outcome 5: Achievement Tests
 
 # 3.2 Causal forests -------------------------------------
@@ -120,9 +159,6 @@ m.table12.4 <- lm(formula = paste0(
 # * 3.2.3 Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation ----------------
 
 # * 3.2.4 Outcome 4: Altruism -------------------------------
-# Define covariates
-altruism.covariates <- c('bdonation_sd', strsplit(controls, split='\\+')[[1]])
-
 # Fit causal tree
 altruism_list <- 
   generate_X_Y_W_C(outcome = 'fdonate', covariates = altruism.covariates)
