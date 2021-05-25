@@ -357,4 +357,17 @@ coeftest(lm(school.score ~ ., data = altruism.school.DF), vcov = vcovHC)
 
 # 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
 
+# * 5.4 Outcome 4: Altruism ---------------------------------------------
+# Note: in the paper they add w.hat and y.hat estimates using the clusters, not sure why
+# and also tune.parameters = "all"
+# Note: remove school-level parameters from X matrix due to lack of overlap
+altruism.cf.noclust <- 
+  causal_forest(X = altruism_list$X[, !colnames(altruism_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')], 
+                Y = altruism_list$Y, W = altruism_list$W)
+
+altruism.ATE.noclust <- average_treatment_effect(altruism.cf.noclust)
+paste("95% CI for the ATE:", round(altruism.ATE.noclust[1], 3),
+      "+/-", round(qnorm(0.975) * altruism.ATE.noclust[2], 3))
+
+test_calibration(altruism.cf.noclust)
 
