@@ -100,6 +100,36 @@ partial_dependence_single <- function(selected.covariate, covariates, type, X,
     theme(plot.title = element_text(size = 11, face = "bold")) 
 }
 
+school_level_heterogeneity <- function(var_list, covariates, tau.hat, cf){
+  school.mat <- 
+    model.matrix(~ b_schoolid + 0, 
+                 data = data.frame(var_list$X, b_schoolid = factor(var_list$C)))
+  school.size <- colSums(school.mat)
+  
+  school.X <- (t(school.mat) %*% 
+                          as.matrix(var_list$X[, covariates])) / 
+    school.size
+  school.X <- data.frame(school.X)
+  colnames(school.X) <- covariates
+  
+  # Compute doubly robust treatment estimates
+  dr.score = tau.hat + var_list$W / cf$W.hat *
+    (var_list$Y - cf$Y.hat - (1 - cf$W.hat) * tau.hat) -
+    (1 - var_list$W) / (1 - cf$W.hat) * 
+    (var_list$Y - cf$Y.hat + cf$W.hat * tau.hat)
+  score <- t(school.mat) %*% dr.score / school.size
+  
+  # Regression forest analysis
+  school.forest <- regression_forest(school.X, score)
+  school.pred <- predict(school.forest)$predictions
+  print(test_calibration(school.forest))
+  
+  # OLS
+  school.DF <- data.frame(school.X, school.score=score)
+  print(coeftest(lm(school.score ~ ., data = school.DF), vcov = vcovHC))
+
+}
+
 # 0. Parameters ------------------------------------
 
 # Global student-level controls defined by authors
@@ -109,10 +139,13 @@ controls_vec <- strsplit(controls, split='\\+')[[1]]
 
 # Define controls used for each outcome (this adds any controls that are specific to an outcome)
 # Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
+violence.covariates <- c('bsbully_c', 'bstrata', 'b_districtid', controls_vec)
 
 # Outcome 2: Social Exclusion
+social.covariates <- c('bfriend', 'bstrata', 'b_districtid', controls_vec)
 
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
+prosocial.covariates <- c('bstrata', 'b_districtid', controls_vec)
 
 # Outcome 4: Altruism
 altruism.covariates <- c('bdonation_sd', 'a2', 'bstrata', 'b_districtid', controls_vec)
@@ -133,10 +166,19 @@ SC_Data <- SC_Data[, b_schoolid := factor(b_schoolid)]
 
 # They only perform HTE analysis for the following outcomes (Tables 9-13)
 # Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
+m.table9.1 <- lm(formula = paste0(
+  'fsbully_c ~ refugee* treatment + bsbully_c  + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data)
 
 # Outcome 2: Social Exclusion
+m.table10.1 <- lm(formula = paste0(
+  'ffriend ~ refugee* treatment + bfriend  + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data)
 
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
+m.table11.2 <- lm(formula = paste0(
+  'fs_decision_out ~ refugee* treatment  + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data)
 
 # Outcome 4: Altruism
 m.table12.1 <- lm(formula = paste0(
@@ -205,10 +247,132 @@ m.table13.4 <- lm(formula = paste0(
 # 3.2 Causal forests -------------------------------------
 
 # * 3.2.1 Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior -------
+# * fsbully_c outcome
+# Fit causal tree
+violence_list <- generate_X_Y_W_C(outcome = 'fsbully_c', covariates = violence.covariates)
+violence.n <- dim(violence_list$X)[1]
+violence.cf <- causal_forest(X = violence_list$X, Y = violence_list$Y, 
+                             W = violence_list$W, clusters = violence_list$C)
+
+# CATE histogram 
+violence.tau.hat <- predict(violence.cf)$predictions
+hist(violence.tau.hat, main="Violence outcome: CATE estimates", freq=F)
+
+# Variable importance
+violence.var_imp <- c(variable_importance(violence.cf))
+names(violence.var_imp) <- violence.covariates # TODO What IS NA? The clusters?
+violence.sorted_var_imp <- sort(violence.var_imp, decreasing = TRUE)
+
+# Data-driven subgroups
+# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
+
+# Best linear projection
+best_linear_projection(violence.cf, violence_list$X)
+
+# Calibration
+test_calibration(violence.cf)
+
+# Compare regions with above/below median CATEs (from Wager & Athey)
+high_effect <- violence.tau.hat > median(violence.tau.hat)
+ate.high <- average_treatment_effect( violence.cf , subset = high_effect )
+ate.low <- average_treatment_effect( violence.cf, subset =! high_effect )
+paste ("95% CI for difference in ATE:",
+       round(ate.high[1] - ate.low[1] , 3) , "+/-",
+       round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
+
+# Partial dependence
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = violence.covariates, 
+                          type = 'binary', X = violence_list$X,
+                          causal.forest = violence.cf)
 
 # * 3.2.2 Outcome 2: Social Exclusion ------------------------------
+# * fsbully_c outcome
+# Fit causal tree
+social_list <- generate_X_Y_W_C(outcome = 'ffriend', covariates = social.covariates)
+social.n <- dim(social_list$X)[1]
+social.cf <- causal_forest(X = social_list$X, Y = social_list$Y, 
+                             W = social_list$W, clusters = social_list$C)
+
+# CATE histogram 
+social.tau.hat <- predict(social.cf)$predictions
+hist(social.tau.hat, main="Social Exclusion outcome: CATE estimates", freq=F)
+
+# Variable importance
+social.var_imp <- c(variable_importance(social.cf))
+names(social.var_imp) <- social.covariates # TODO What IS NA? The clusters?
+social.sorted_var_imp <- sort(social.var_imp, decreasing = TRUE)
+
+# Data-driven subgroups
+# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
+
+# Best linear projection
+best_linear_projection(social.cf, social_list$X)
+
+# Calibration
+test_calibration(social.cf)
+
+# Compare regions with above/below median CATEs (from Wager & Athey)
+high_effect <- social.tau.hat > median(social.tau.hat)
+ate.high <- average_treatment_effect( social.cf , subset = high_effect )
+ate.low <- average_treatment_effect( social.cf, subset =! high_effect )
+paste ("95% CI for difference in ATE:",
+       round(ate.high[1] - ate.low[1] , 3) , "+/-",
+       round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
+
+# Partial dependence
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = social.covariates, 
+                          type = 'binary', X = social_list$X,
+                          causal.forest = social.cf)
+
+partial_dependence_single(selected.covariate = 'male', 
+                          covariates = social.covariates, 
+                          type = 'binary', X = social_list$X,
+                          causal.forest = social.cf)
 
 # * 3.2.3 Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation ----------------
+prosocial_list <- generate_X_Y_W_C(outcome = 'fs_decision_in', covariates = prosocial.covariates)
+prosocial.n <- dim(prosocial_list$X)[1]
+prosocial.cf <- causal_forest(X = prosocial_list$X, Y = prosocial_list$Y, 
+                           W = prosocial_list$W, clusters = prosocial_list$C)
+
+# CATE histogram 
+prosocial.tau.hat <- predict(prosocial.cf)$predictions
+hist(prosocial.tau.hat, main="Prosocial Behavior outcome: CATE estimates", freq=F)
+
+# Variable importance
+prosocial.var_imp <- c(variable_importance(prosocial.cf))
+names(prosocial.var_imp) <- prosocial.covariates # TODO What IS NA? The clusters?
+prosocial.sorted_var_imp <- sort(prosocial.var_imp, decreasing = TRUE)
+
+# Data-driven subgroups
+# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
+
+# Best linear projection
+best_linear_projection(prosocial.cf, prosocial_list$X)
+
+# Calibration
+test_calibration(prosocial.cf)
+
+# Compare regions with above/below median CATEs (from Wager & Athey)
+high_effect <- prosocial.tau.hat > median(prosocial.tau.hat)
+ate.high <- average_treatment_effect( prosocial.cf , subset = high_effect )
+ate.low <- average_treatment_effect( prosocial.cf, subset =! high_effect )
+paste ("95% CI for difference in ATE:",
+       round(ate.high[1] - ate.low[1] , 3) , "+/-",
+       round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
+
+# Partial dependence
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = prosocial.covariates, 
+                          type = 'binary', X = prosocial_list$X,
+                          causal.forest = prosocial.cf)
+
+partial_dependence_single(selected.covariate = 'braven_sd', 
+                          covariates = prosocial.covariates, 
+                          type = 'non-binary', X = prosocial_list$X,
+                          causal.forest = prosocial.cf, grid_size = 5)
 
 # * 3.2.4 Outcome 4: Altruism -------------------------------
 # * fdonate outcome
@@ -314,52 +478,42 @@ SC_Data_schools <- SC_Data[, .(
   bactive_syrian_3 = max(bactive_syrian_3, na.rm = TRUE),
   b_provinceid = head(b_provinceid, 1),
   b_districtid = head(b_districtid, 1),
-  bstrata = max(bstrata),
-  
-  # Altruism
-  fdonate = mean(fdonate, na.rm = TRUE)
+  bstrata = max(bstrata)
 ), by = .(b_schoolid)]
 
 # School size
 SC_Data_schools <- SC_Data_schools[, b_schoolsize := bstudentnum_2 + bstudentnum_3]
 SC_Data_schools <- SC_Data_schools[, srefshare := (bactive_syrian_2 + bactive_syrian_3) / b_schoolsize]
 
+# * 4.1 Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior -------
+school_level_heterogeneity(var_list = violence_list, 
+                           covariates = c('refugee', 'braven_sd', 'beyes_sd', 'male'), 
+                           tau.hat = violence.tau.hat, cf = violence.cf)
+
 # * 4.4 Outcome 4: Altruism ------------------------
-# We can evaluate the refugee hypothesis by looking at the share of refugee/host students in the school
-
-# Compute school level data
-altruism.school.mat <- 
-  model.matrix(~ b_schoolid + 0, 
-               data = data.frame(altruism_list$X, b_schoolid = factor(altruism_list$C)))
-altruism.school.size <- colSums(altruism.school.mat)
-
-altruism.school.X <- (t(altruism.school.mat) %*% 
-                        as.matrix(altruism_list$X[, c('refugee', 'braven_sd', 'beyes_sd', 'male')])) / 
-  altruism.school.size
-altruism.school.X <- data.frame(altruism.school.X)
-colnames(altruism.school.X) <- c('refugee', 'braven_sd', 'beyes_sd', 'male')
-
-# Compute doubly robust treatment estimates
-altruism.dr.score = altruism.tau.hat + altruism_list$W / altruism.cf$W.hat *
-  (altruism_list$Y - altruism.cf$Y.hat - (1 - altruism.cf$W.hat) * altruism.tau.hat) -
-  (1 - altruism_list$W) / (1 - altruism.cf$W.hat) * 
-  (altruism_list$Y - altruism.cf$Y.hat + altruism.cf$W.hat * altruism.tau.hat)
-altruism.score <- t(altruism.school.mat) %*% altruism.dr.score / altruism.school.size
-
-# Regression forest analysis
-altruism.school.forest <- regression_forest(altruism.school.X, altruism.score)
-altruism.school.pred <- predict(altruism.school.forest)$predictions
-test_calibration(altruism.school.forest)
-
-# OLS
-altruism.school.DF <- data.frame(altruism.school.X, school.score=altruism.score)
-coeftest(lm(school.score ~ ., data = altruism.school.DF), vcov = vcovHC)
+school_level_heterogeneity(var_list = altruism_list, 
+                           covariates = c('refugee', 'braven_sd', 'beyes_sd', 'male'), 
+                           tau.hat = altruism.tau.hat, cf = altruism.cf)
 
 # 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
-
-# * 5.4 Outcome 4: Altruism ---------------------------------------------
 # Note: in the paper they add w.hat and y.hat estimates using the clusters, not sure why
 # and also tune.parameters = "all"
+
+# * 5.1 Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior -------
+violence.X.adj <- violence_list$X[, !colnames(violence_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
+violence.cf.noclust <- 
+  causal_forest(X = violence.X.adj, 
+                Y = violence_list$Y, W = violence_list$W)
+
+violence.ATE.noclust <- average_treatment_effect(violence.cf.noclust)
+paste("95% CI for the ATE:", round(violence.ATE.noclust[1], 3),
+      "+/-", round(qnorm(0.975) * violence.ATE.noclust[2], 3))
+
+best_linear_projection(violence.cf.noclust, violence.X.adj)
+
+test_calibration(violence.cf.noclust)
+
+# * 5.4 Outcome 4: Altruism ---------------------------------------------
 # Note: remove school-level parameters from X matrix due to lack of overlap
 altruism.cf.noclust <- 
   causal_forest(X = altruism_list$X[, !colnames(altruism_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')], 
