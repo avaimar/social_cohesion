@@ -102,7 +102,7 @@ partial_dependence_single <- function(selected.covariate, covariates, type, X,
 
 # 0. Parameters ------------------------------------
 
-# Global controls defined by authors at the student-level
+# Global student-level controls defined by authors
 # Please write below formula without spaces
 controls <- 'ageinm+male+refugee+astudent+b_schoolsize+braven_sd+beyes_sd+f_csize'
 controls_vec <- strsplit(controls, split='\\+')[[1]]
@@ -115,14 +115,15 @@ controls_vec <- strsplit(controls, split='\\+')[[1]]
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
 
 # Outcome 4: Altruism
-altruism.covariates <- c('bdonation_sd', controls_vec)
+altruism.covariates <- c('bdonation_sd', 'a2', 'bstrata', 'b_districtid', controls_vec)
 
 # Outcome 5: Achievement Tests
-achievement.covariates <- c(controls_vec)
+achievement.covariates <- c('bturk_sd', 'bstrata', 'b_districtid', controls_vec)
 
 # 1. Load processed data ------------------------------------
 SC_Data <- haven::read_dta('Data/Processed_Data/JS_Stata_Processed.dta')
 SC_Data <- as.data.table(SC_Data)
+SC_Data <- SC_Data[, b_schoolid := factor(b_schoolid)]
 
 # 2. Pre-specified hypotheses ----------------------
 # Social cohesion paper posits 3 subgroups: refugee status, gender and emotional intelligence
@@ -298,11 +299,61 @@ partial_dependence_single(selected.covariate = 'braven_sd',
                           type = 'non-binary', X = achievement_list$X,
                           causal.forest = achievement.cf, grid_size = 5)
 
-# 4. Comparison of heterogeneity at the school vs. student levels Wager & Athey (2019; p. 9) --------
+# 4. School level heterogeneity Wager & Athey (2019; p. 9) --------
+# Create school-level covariates
+# Note that we use max here because some rows have NAs
+SC_Data_schools <- SC_Data[, .(
+  perpetrator = head(perpetrator, 1),
+  victim = head(victim, 1),
+  events = head(events, 1),
+  treatment = head(treatment, 1), 
+  bstudentnum_2 = max(bstudentnum_2, na.rm = TRUE),
+  bstudentnum_3 = max(bstudentnum_3, na.rm = TRUE),
+  n_class = uniqueN(b_classid),
+  bactive_syrian_2 = max(bactive_syrian_2, na.rm = TRUE), 
+  bactive_syrian_3 = max(bactive_syrian_3, na.rm = TRUE),
+  b_provinceid = head(b_provinceid, 1),
+  b_districtid = head(b_districtid, 1),
+  bstrata = max(bstrata),
+  
+  # Altruism
+  fdonate = mean(fdonate, na.rm = TRUE)
+), by = .(b_schoolid)]
 
-# Outcome 4: Altruism
+# School size
+SC_Data_schools <- SC_Data_schools[, b_schoolsize := bstudentnum_2 + bstudentnum_3]
+SC_Data_schools <- SC_Data_schools[, srefshare := (bactive_syrian_2 + bactive_syrian_3) / b_schoolsize]
+
+# * 4.4 Outcome 4: Altruism ------------------------
 # We can evaluate the refugee hypothesis by looking at the share of refugee/host students in the school
 
+# Compute school level data
+altruism.school.mat <- 
+  model.matrix(~ b_schoolid + 0, 
+               data = data.frame(altruism_list$X, b_schoolid = factor(altruism_list$C)))
+altruism.school.size <- colSums(altruism.school.mat)
+
+altruism.school.X <- (t(altruism.school.mat) %*% 
+                        as.matrix(altruism_list$X[, c('refugee', 'braven_sd', 'beyes_sd', 'male')])) / 
+  altruism.school.size
+altruism.school.X <- data.frame(altruism.school.X)
+colnames(altruism.school.X) <- c('refugee', 'braven_sd', 'beyes_sd', 'male')
+
+# Compute doubly robust treatment estimates
+altruism.dr.score = altruism.tau.hat + altruism_list$W / altruism.cf$W.hat *
+  (altruism_list$Y - altruism.cf$Y.hat - (1 - altruism.cf$W.hat) * altruism.tau.hat) -
+  (1 - altruism_list$W) / (1 - altruism.cf$W.hat) * 
+  (altruism_list$Y - altruism.cf$Y.hat + altruism.cf$W.hat * altruism.tau.hat)
+altruism.score <- t(altruism.school.mat) %*% altruism.dr.score / altruism.school.size
+
+# Regression forest analysis
+altruism.school.forest <- regression_forest(altruism.school.X, altruism.score)
+altruism.school.pred <- predict(altruism.school.forest)$predictions
+test_calibration(altruism.school.forest)
+
+# OLS
+altruism.school.DF <- data.frame(altruism.school.X, school.score=altruism.score)
+coeftest(lm(school.score ~ ., data = altruism.school.DF), vcov = vcovHC)
 
 # 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
 
