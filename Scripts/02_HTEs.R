@@ -51,6 +51,55 @@ get_AIPW_scores <- function(outcome, covariates) {
   # TODO Jake
 }
 
+partial_dependence_single <- function(selected.covariate, covariates, type, X,
+                                      causal.forest, grid_size=0){
+  # Get data and define other covariates
+  data <- as.data.frame(X)
+  other.covariates <- covariates[which(covariates != selected.covariate)]
+  
+  # Define grid
+  if (type == 'binary') {
+    grid.size <- 2
+    covariate.grid <- c(0, 1)
+  } else {
+    grid.size <- grid_size
+    covariate.grid <- seq(min(data[,selected.covariate]), 
+                          max(data[,selected.covariate]), length.out=grid.size)
+  }
+  
+  # Take median of other covariates 
+  medians <- apply(data[, other.covariates, F], 2, median)
+  
+  # Construct a dataset
+  data.grid <- data.frame(sapply(medians, function(x) rep(x, grid.size)), covariate.grid)
+  colnames(data.grid) <- c(other.covariates, selected.covariate)
+  
+  # Expand the data
+  fmla <- formula(paste0('~  ', paste(covariates, collapse = '+')))
+  X.grid <- model.matrix(fmla, data.grid)
+  
+  # Point predictions of the CATE and standard errors 
+  forest.pred <- predict(causal.forest, newdata = X.grid, estimate.variance=TRUE)
+  tau.hat <- forest.pred$predictions
+  tau.hat.se <- sqrt(forest.pred$variance.estimates)
+  
+  # Plot predictions for each group and 95% confidence intervals around them.
+  data.pred <- transform(data.grid, tau.hat=tau.hat, 
+                                  ci.low = tau.hat - 2*tau.hat.se, 
+                                  ci.high = tau.hat + 2*tau.hat.se)
+  ggplot(data.pred) +
+    geom_line(aes_string(x=selected.covariate, y="tau.hat", group = 1), color="black") +
+    geom_errorbar(aes_string(x=selected.covariate, ymin="ci.low", 
+                             ymax="ci.high", width=.2), color="blue") +
+    ylab("") +
+    ggtitle(paste0("Predicted treatment effect varying '", 
+                   selected.covariate, "' (other variables fixed at median)")) +
+    scale_x_continuous(selected.covariate, breaks=covariate.grid, 
+                       labels=signif(covariate.grid, 2)) +
+    theme_minimal() +
+    theme(plot.title = element_text(size = 11, face = "bold")) 
+}
+
 # 0. Parameters ------------------------------------
 
 # Global controls defined by authors at the student-level
@@ -195,12 +244,15 @@ paste ("95% CI for difference in ATE:",
        round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
 
 # Partial dependence
-altruism.selected.covariate <- 'refugee'
-altruism.other.covariates <- 
-  altruism.covariates[which(altruism.covariates != altruism.selected.covariate)]
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = altruism.covariates, 
+                          type = 'binary', X = altruism_list$X,
+                          causal.forest = altruism.cf)
 
-altruism.covariate.grid <- c(0, 1)
-# TODO pending partial dependence
+partial_dependence_single(selected.covariate = 'braven_sd', 
+                          covariates = altruism.covariates, 
+                          type = 'non-binary', X = altruism_list$X,
+                          causal.forest = altruism.cf, grid_size = 5)
 
 # * 3.2.5 Outcome 5: Achievement Tests --------------------------------
 # Fit causal tree
@@ -235,11 +287,21 @@ paste ("95% CI for difference in ATE:",
        round(ate.high[1] - ate.low[1] , 3) , "+/-",
        round(qnorm(0.975) * sqrt ( ate.high[2]^2 + ate.low[2]^2) , 3))
 
+# Partial dependence
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = achievement.covariates, 
+                          type = 'binary', X = achievement_list$X,
+                          causal.forest = achievement.cf)
+
+partial_dependence_single(selected.covariate = 'braven_sd', 
+                          covariates = achievement.covariates, 
+                          type = 'non-binary', X = achievement_list$X,
+                          causal.forest = achievement.cf, grid_size = 5)
+
 # 4. Comparison of heterogeneity at the school vs. student levels Wager & Athey (2019; p. 9) --------
 
 # Outcome 4: Altruism
 # We can evaluate the refugee hypothesis by looking at the share of refugee/host students in the school
-
 
 
 # 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
