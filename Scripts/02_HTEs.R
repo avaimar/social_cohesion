@@ -47,8 +47,22 @@ generate_X_Y_W_C <- function(outcome, covariates) {
   list(X = X,Y = Y, W = W, C = C)
 }
 
-get_AIPW_scores <- function(outcome, covariates) {
-  # TODO Jake
+get_AIPW_scores <- function(var_list, cf) {
+  # Get forest predictions. 
+  m.hat <- cf$Y.hat  
+  e.hat <- cf$W.hat  
+  tau.hat <- cf$predictions
+  
+  # Predicting mu.hat(X[i], 1) and mu.hat(X[i], 0) for obs in held-out sample
+  # Note: to understand this, read equations 6-8 in this vignette
+  # https://grf-labs.github.io/grf/articles/muhats.html
+  mu.hat.0 <- m.hat - e.hat * tau.hat        # E[Y|X,W=0] = E[Y|X] - e(X)*tau(X)
+  mu.hat.1 <- m.hat + (1 - e.hat) * tau.hat  # E[Y|X,W=1] = E[Y|X] + (1 - e(X))*tau(X)
+  
+  # Compute AIPW scores
+  aipw.scores <- tau.hat + var_list$W / e.hat * (var_list$Y -  mu.hat.1) - 
+    (1 - var_list$W) / (1 - e.hat) * (var_list$Y -  mu.hat.0)
+  aipw.scores
 }
 
 partial_dependence_single <- function(selected.covariate, covariates, type, X,
@@ -142,7 +156,13 @@ controls_vec <- strsplit(controls, split='\\+')[[1]]
 violence.covariates <- c('bsbully_c', 'bstrata', 'b_districtid', controls_vec)
 
 # Outcome 2: Social Exclusion
+# ffriend
+social.outcome <- 'ffriend'
 social.covariates <- c('bfriend', 'bstrata', 'b_districtid', controls_vec)
+
+# Host Emotional support
+social.outcome <- 'fhostsupportself'
+social.covariates <- c('bhostsupportself', 'bstrata', 'b_districtid', controls_vec)
 
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
 prosocial.covariates <- c('bstrata', 'b_districtid', controls_vec)
@@ -233,7 +253,7 @@ m.table13.4 <- lm(formula = paste0(
 
 # 3. Data-driven hypotheses ----------------------------
 # 3.1 Causal trees with clustering as in Athey & Wager (2019) ------------
- 
+ # TODO Eric
 # Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior
 
 # Outcome 2: Social Exclusion
@@ -289,7 +309,7 @@ partial_dependence_single(selected.covariate = 'refugee',
 # * 3.2.2 Outcome 2: Social Exclusion ------------------------------
 # * fsbully_c outcome
 # Fit causal tree
-social_list <- generate_X_Y_W_C(outcome = 'ffriend', covariates = social.covariates)
+social_list <- generate_X_Y_W_C(outcome = social.outcome, covariates = social.covariates)
 social.n <- dim(social_list$X)[1]
 social.cf <- causal_forest(X = social_list$X, Y = social_list$Y, 
                              W = social_list$W, clusters = social_list$C)
@@ -330,6 +350,36 @@ partial_dependence_single(selected.covariate = 'male',
                           covariates = social.covariates, 
                           type = 'binary', X = social_list$X,
                           causal.forest = social.cf)
+
+partial_dependence_single(selected.covariate = 'braven_sd', 
+                          covariates = social.covariates, 
+                          type = 'non-binary', X = social_list$X,
+                          causal.forest = social.cf, grid_size = 5)
+
+partial_dependence_single(selected.covariate = 'beyes_sd', 
+                          covariates = social.covariates, 
+                          type = 'non-binary', X = social_list$X,
+                          causal.forest = social.cf, grid_size = 5)
+
+# Regress AIPW scores on group membership
+social.aipw <- get_AIPW_scores(social_list, social.cf)
+
+social.aipw.ols <- lm(formula = 'social.aipw ~ refugee', 
+          data = transform(social_list$X, aipw.scores = social.aipw))
+social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
+
+social.aipw.ols <- lm(formula = 'social.aipw ~ I(braven_sd < -0.6)', 
+                      data = transform(social_list$X, aipw.scores = social.aipw))
+social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
+
+social.aipw.ols <- lm(formula = 'social.aipw ~ male', 
+                      data = transform(social_list$X, aipw.scores = social.aipw))
+social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
+
+social.aipw.ols <- lm(formula = 'social.aipw ~ beyes_sd', 
+                      data = transform(social_list$X, aipw.scores = social.aipw))
+social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
+
 
 # * 3.2.3 Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation ----------------
 prosocial_list <- generate_X_Y_W_C(outcome = 'fs_decision_in', covariates = prosocial.covariates)
