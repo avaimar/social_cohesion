@@ -120,9 +120,7 @@ school_level_heterogeneity <- function(var_list, covariates, tau.hat, cf){
                  data = data.frame(var_list$X, b_schoolid = factor(var_list$C)))
   school.size <- colSums(school.mat)
   
-  school.X <- (t(school.mat) %*% 
-                          as.matrix(var_list$X[, covariates])) / 
-    school.size
+  school.X <- (t(school.mat) %*% as.matrix(var_list$X[, covariates])) / school.size
   school.X <- data.frame(school.X)
   colnames(school.X) <- covariates
   
@@ -540,6 +538,11 @@ school_level_heterogeneity(var_list = violence_list,
                            covariates = c('refugee', 'braven_sd', 'beyes_sd', 'male'), 
                            tau.hat = violence.tau.hat, cf = violence.cf)
 
+# * 4.1 Outcome 2: Social Exclusion -------
+school_level_heterogeneity(var_list = social_list, 
+                           covariates = c('refugee'), 
+                           tau.hat = social.tau.hat, cf = social.cf)
+
 # * 4.4 Outcome 4: Altruism ------------------------
 school_level_heterogeneity(var_list = altruism_list, 
                            covariates = c('refugee', 'braven_sd', 'beyes_sd', 'male'), 
@@ -562,6 +565,20 @@ paste("95% CI for the ATE:", round(violence.ATE.noclust[1], 3),
 best_linear_projection(violence.cf.noclust, violence.X.adj)
 
 test_calibration(violence.cf.noclust)
+
+# * 5.1 Outcome 2: Social Exclusion ------------------------
+social.X.adj <- social_list$X[, !colnames(social_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
+social.cf.noclust <- 
+  causal_forest(X = social.X.adj, 
+                Y = social_list$Y, W = social_list$W)
+
+social.ATE.noclust <- average_treatment_effect(social.cf.noclust)
+paste("95% CI for the ATE:", round(social.ATE.noclust[1], 3),
+      "+/-", round(qnorm(0.975) * social.ATE.noclust[2], 3))
+
+best_linear_projection(social.cf.noclust, social.X.adj)
+
+test_calibration(social.cf.noclust)
 
 # * 5.4 Outcome 4: Altruism ---------------------------------------------
 # Note: remove school-level parameters from X matrix due to lack of overlap
