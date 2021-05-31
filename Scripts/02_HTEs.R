@@ -13,134 +13,7 @@ library(stringr)
 
 
 # Helper functions
-generate_X_Y_W_C <- function(outcome, covariates) {
-  # _______________________________________________________
-  # Generates the X, Y, W and cluster components for a given outcome 
-  # and a set of covariates by eliminating missing observations
-  # from the SC_Data dataset. Assumes the treatment column is
-  # named 'treatment', and cluster column is 'b_schoolid.
-  # Inputs:
-  # - outcome: (str) outcome column name in SC_Data
-  # - covariates: (vector of str) covariate column names
-  # Returns:
-  # A list with X, Y, W, C components each including a matrix
-  # or data.table
-  # _______________________________________________________
-  
-  # Filter missing entries
-  selected_cols <- c(outcome, covariates, 'treatment', 'b_schoolid')
-  data <- SC_Data[, selected_cols, with=FALSE]
-  data <- data[complete.cases(data)]
-  
-  # Setup formula
-  fmla <- formula(paste0(outcome, '~', paste(covariates, collapse='+')))
-  X <- model.matrix(fmla, data)
-  W <- data[, .(treatment)]
-  Y <- data[, outcome, with=FALSE]
-  C <- data[, .(b_schoolid)]
-  
-  # Format Y, W, C as numeric vectors
-  W <- as.numeric(W[[1]])
-  Y <- as.numeric(Y[[1]])
-  C <- as.numeric(C[[1]])
-  
-  list(X = X,Y = Y, W = W, C = C)
-}
-
-get_AIPW_scores <- function(var_list, cf) {
-  # Get forest predictions. 
-  m.hat <- cf$Y.hat  
-  e.hat <- cf$W.hat  
-  tau.hat <- cf$predictions
-  
-  # Predicting mu.hat(X[i], 1) and mu.hat(X[i], 0) for obs in held-out sample
-  # Note: to understand this, read equations 6-8 in this vignette
-  # https://grf-labs.github.io/grf/articles/muhats.html
-  mu.hat.0 <- m.hat - e.hat * tau.hat        # E[Y|X,W=0] = E[Y|X] - e(X)*tau(X)
-  mu.hat.1 <- m.hat + (1 - e.hat) * tau.hat  # E[Y|X,W=1] = E[Y|X] + (1 - e(X))*tau(X)
-  
-  # Compute AIPW scores
-  aipw.scores <- tau.hat + var_list$W / e.hat * (var_list$Y -  mu.hat.1) - 
-    (1 - var_list$W) / (1 - e.hat) * (var_list$Y -  mu.hat.0)
-  aipw.scores
-}
-
-partial_dependence_single <- function(selected.covariate, covariates, type, X,
-                                      causal.forest, grid_size=0){
-  # Get data and define other covariates
-  data <- as.data.frame(X)
-  other.covariates <- covariates[which(covariates != selected.covariate)]
-  
-  # Define grid
-  if (type == 'binary') {
-    grid.size <- 2
-    covariate.grid <- c(0, 1)
-  } else {
-    grid.size <- grid_size
-    covariate.grid <- seq(min(data[,selected.covariate]), 
-                          max(data[,selected.covariate]), length.out=grid.size)
-  }
-  
-  # Take median of other covariates 
-  medians <- apply(data[, other.covariates, F], 2, median)
-  
-  # Construct a dataset
-  data.grid <- data.frame(sapply(medians, function(x) rep(x, grid.size)), covariate.grid)
-  colnames(data.grid) <- c(other.covariates, selected.covariate)
-  
-  # Expand the data
-  fmla <- formula(paste0('~  ', paste(covariates, collapse = '+')))
-  X.grid <- model.matrix(fmla, data.grid)
-  
-  # Point predictions of the CATE and standard errors 
-  forest.pred <- predict(causal.forest, newdata = X.grid, estimate.variance=TRUE)
-  tau.hat <- forest.pred$predictions
-  tau.hat.se <- sqrt(forest.pred$variance.estimates)
-  
-  # Plot predictions for each group and 95% confidence intervals around them.
-  data.pred <- transform(data.grid, tau.hat=tau.hat, 
-                                  ci.low = tau.hat - 2*tau.hat.se, 
-                                  ci.high = tau.hat + 2*tau.hat.se)
-  ggplot(data.pred) +
-    geom_line(aes_string(x=selected.covariate, y="tau.hat", group = 1), color="black") +
-    geom_errorbar(aes_string(x=selected.covariate, ymin="ci.low", 
-                             ymax="ci.high", width=.2), color="blue") +
-    ylab("") +
-    ggtitle(paste0("Predicted treatment effect varying '", 
-                   selected.covariate, "' (other variables fixed at median)")) +
-    scale_x_continuous(selected.covariate, breaks=covariate.grid, 
-                       labels=signif(covariate.grid, 2)) +
-    theme_minimal() +
-    theme(plot.title = element_text(size = 11, face = "bold")) 
-}
-
-school_level_heterogeneity <- function(var_list, covariates, tau.hat, cf){
-  school.mat <- 
-    model.matrix(~ b_schoolid + 0, 
-                 data = data.frame(var_list$X, b_schoolid = factor(var_list$C)))
-  school.size <- colSums(school.mat)
-  
-  school.X <- (t(school.mat) %*% as.matrix(var_list$X[, covariates])) / school.size
-  school.X <- data.frame(school.X)
-  colnames(school.X) <- covariates
-  
-  # Compute doubly robust treatment estimates
-  dr.score = tau.hat + var_list$W / cf$W.hat *
-    (var_list$Y - cf$Y.hat - (1 - cf$W.hat) * tau.hat) -
-    (1 - var_list$W) / (1 - cf$W.hat) * 
-    (var_list$Y - cf$Y.hat + cf$W.hat * tau.hat)
-  score <- t(school.mat) %*% dr.score / school.size
-  
-  # Regression forest analysis
-  school.forest <- regression_forest(school.X, score)
-  school.pred <- predict(school.forest)$predictions
-  print(test_calibration(school.forest))
-  
-  # OLS
-  school.DF <- data.frame(school.X, school.score=score)
-  print(coeftest(lm(school.score ~ ., data = school.DF), vcov = vcovHC))
-
-}
+source('Scripts/00_Functions.R')
 
 # 0. Parameters ------------------------------------
 
@@ -175,6 +48,7 @@ achievement.covariates <- c('bturk_sd', 'bstrata', 'b_districtid', controls_vec)
 SC_Data <- haven::read_dta('Data/Processed_Data/JS_Stata_Processed.dta')
 SC_Data <- as.data.table(SC_Data)
 SC_Data <- SC_Data[, b_schoolid := factor(b_schoolid)]
+SC_Data <- SC_Data[, bstrata := factor(bstrata)]
 
 # 2. Pre-specified hypotheses ----------------------
 # Social cohesion paper posits 3 subgroups: refugee status, gender and emotional intelligence
@@ -191,6 +65,10 @@ m.table9.1 <- lm(formula = paste0(
 # Outcome 2: Social Exclusion
 m.table10.1 <- lm(formula = paste0(
   'ffriend ~ refugee* treatment + bfriend  + factor(bstrata) + factor(b_districtid) +', controls),
+  data = SC_Data)
+
+m.table10.3 <- lm(formula = paste0(
+  'fhostsupportself ~ refugee*treatment + bhostsupportself  + factor(bstrata) + factor(b_districtid) +', controls),
   data = SC_Data)
 
 # Outcome 3: Prosocial Behavior: Trust, Reciprocity and Cooperation
@@ -270,7 +148,7 @@ m.table13.4 <- lm(formula = paste0(
 violence_list <- generate_X_Y_W_C(outcome = 'fsbully_c', covariates = violence.covariates)
 violence.n <- dim(violence_list$X)[1]
 violence.cf <- causal_forest(X = violence_list$X, Y = violence_list$Y, 
-                             W = violence_list$W, clusters = violence_list$C)
+                             W = violence_list$W, clusters = violence_list$C, W.hat = 5)
 
 # CATE histogram 
 violence.tau.hat <- predict(violence.cf)$predictions
@@ -305,12 +183,11 @@ partial_dependence_single(selected.covariate = 'refugee',
                           causal.forest = violence.cf)
 
 # * 3.2.2 Outcome 2: Social Exclusion ------------------------------
-# * fsbully_c outcome
 # Fit causal tree
 social_list <- generate_X_Y_W_C(outcome = social.outcome, covariates = social.covariates)
 social.n <- dim(social_list$X)[1]
 social.cf <- causal_forest(X = social_list$X, Y = social_list$Y, 
-                             W = social_list$W, clusters = social_list$C)
+                             W = social_list$W, clusters = social_list$C, W.hat = 5)
 
 # CATE histogram 
 social.tau.hat <- predict(social.cf)$predictions
@@ -383,7 +260,7 @@ social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"
 prosocial_list <- generate_X_Y_W_C(outcome = 'fs_decision_in', covariates = prosocial.covariates)
 prosocial.n <- dim(prosocial_list$X)[1]
 prosocial.cf <- causal_forest(X = prosocial_list$X, Y = prosocial_list$Y, 
-                           W = prosocial_list$W, clusters = prosocial_list$C)
+                           W = prosocial_list$W, clusters = prosocial_list$C, W.hat = 5)
 
 # CATE histogram 
 prosocial.tau.hat <- predict(prosocial.cf)$predictions
@@ -428,7 +305,7 @@ partial_dependence_single(selected.covariate = 'braven_sd',
 altruism_list <- generate_X_Y_W_C(outcome = 'fdonate', covariates = altruism.covariates)
 altruism.n <- dim(altruism_list$X)[1]
 altruism.cf <- causal_forest(X = altruism_list$X, Y = altruism_list$Y, 
-                             W = altruism_list$W, clusters = altruism_list$C)
+                             W = altruism_list$W, clusters = altruism_list$C, W.hat = 5)
 
 # CATE histogram 
 altruism.tau.hat <- predict(altruism.cf)$predictions
@@ -472,7 +349,7 @@ partial_dependence_single(selected.covariate = 'braven_sd',
 achievement_list <- generate_X_Y_W_C(outcome = 'fturk_sd', covariates = achievement.covariates)
 achievement.n <- dim(achievement_list$X)[1]
 achievement.cf <- causal_forest(X = achievement_list$X, Y = achievement_list$Y, 
-                             W = achievement_list$W, clusters = achievement_list$C)
+                             W = achievement_list$W, clusters = achievement_list$C, W.hat = 5)
 
 # CATE histogram 
 achievement.tau.hat <- predict(achievement.cf)$predictions
@@ -556,7 +433,7 @@ school_level_heterogeneity(var_list = altruism_list,
 violence.X.adj <- violence_list$X[, !colnames(violence_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
 violence.cf.noclust <- 
   causal_forest(X = violence.X.adj, 
-                Y = violence_list$Y, W = violence_list$W)
+                Y = violence_list$Y, W = violence_list$W, W.hat = 5)
 
 violence.ATE.noclust <- average_treatment_effect(violence.cf.noclust)
 paste("95% CI for the ATE:", round(violence.ATE.noclust[1], 3),
@@ -570,7 +447,7 @@ test_calibration(violence.cf.noclust)
 social.X.adj <- social_list$X[, !colnames(social_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
 social.cf.noclust <- 
   causal_forest(X = social.X.adj, 
-                Y = social_list$Y, W = social_list$W)
+                Y = social_list$Y, W = social_list$W, W.hat = 5)
 
 social.ATE.noclust <- average_treatment_effect(social.cf.noclust)
 paste("95% CI for the ATE:", round(social.ATE.noclust[1], 3),
@@ -584,7 +461,7 @@ test_calibration(social.cf.noclust)
 # Note: remove school-level parameters from X matrix due to lack of overlap
 altruism.cf.noclust <- 
   causal_forest(X = altruism_list$X[, !colnames(altruism_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')], 
-                Y = altruism_list$Y, W = altruism_list$W)
+                Y = altruism_list$Y, W = altruism_list$W, W.hat = 5)
 
 altruism.ATE.noclust <- average_treatment_effect(altruism.cf.noclust)
 paste("95% CI for the ATE:", round(altruism.ATE.noclust[1], 3),
