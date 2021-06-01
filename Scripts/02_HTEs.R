@@ -195,11 +195,8 @@ hist(social.tau.hat, main="Social Exclusion outcome: CATE estimates", freq=F)
 
 # Variable importance
 social.var_imp <- c(variable_importance(social.cf))
-names(social.var_imp) <- social.covariates # TODO What IS NA? The clusters?
+names(social.var_imp) <- colnames(social_list$X)
 social.sorted_var_imp <- sort(social.var_imp, decreasing = TRUE)
-
-# Data-driven subgroups
-# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
 
 # Best linear projection
 best_linear_projection(social.cf, social_list$X)
@@ -217,7 +214,7 @@ paste ("95% CI for difference in ATE:",
 
 # Partial dependence
 partial_dependence_single(selected.covariate = 'refugee', 
-                          covariates = social.covariates, 
+                          covariates = colnames(social_list$X)[2:length(colnames(social_list$X))], 
                           type = 'binary', X = social_list$X,
                           causal.forest = social.cf)
 
@@ -417,7 +414,7 @@ school_level_heterogeneity(var_list = violence_list,
 
 # * 4.1 Outcome 2: Social Exclusion -------
 school_level_heterogeneity(var_list = social_list, 
-                           covariates = c('refugee'), 
+                           covariates = c('refugee', 'braven_sd', 'beyes_sd', 'male'), 
                            tau.hat = social.tau.hat, cf = social.cf)
 
 # * 4.4 Outcome 4: Altruism ------------------------
@@ -456,6 +453,47 @@ paste("95% CI for the ATE:", round(social.ATE.noclust[1], 3),
 best_linear_projection(social.cf.noclust, social.X.adj)
 
 test_calibration(social.cf.noclust)
+
+partial_dependence_single(selected.covariate = 'refugee', 
+                          covariates = social.covariates[!social.covariates %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')], 
+                          type = 'binary', X = social.X.adj,
+                          causal.forest = social.cf.noclust)
+
+social.aipw.noclust <- get_AIPW_scores(
+  list(X = social.X.adj, Y = social_list$Y, W = social_list$W, C = social_list$C), 
+  social.cf.noclust)
+
+social.aipw.ols.noclust <- lm(formula = 'social.aipw.noclust ~ refugee', 
+                      data = transform(social.X.adj, aipw.scores = social.aipw.noclust))
+coeftest(social.aipw.ols.noclust, vcov = vcovHC(social.aipw.ols.noclust, "HC2"))
+
+# Using folds (Wager & Athey 2019)
+nfold = 5
+school.levels = unique(school.id)
+cluster.folds = sample.int(nfold, length(school.levels), replace = TRUE)
+
+tau.hat.crossfold = rep(NA, length(Y))
+for (foldid in 1:nfold) {
+  print(foldid)
+  infold = school.id %in% school.levels[cluster.folds == foldid]
+  cf.fold = causal_forest(X[!infold, selected.idx], Y[!infold], W[!infold],
+                          Y.hat = Y.hat[!infold], W.hat = W.hat[!infold],
+                          tune.parameters = "all")
+  pred.fold = predict(cf.fold, X[infold, selected.idx])$predictions
+  tau.hat.crossfold[infold] = pred.fold
+}
+
+cf.noclust.cpy = cf.noclust
+cf.noclust.cpy$predictions = tau.hat.crossfold
+cf.noclust.cpy$clusters = school.id
+test_calibration(cf.noclust.cpy)
+
+Rloss = mean(((Y - Y.hat) - tau.hat * (W - W.hat))^2)
+Rloss.noclust = mean(((Y - Y.hat) - tau.hat.noclust * (W - W.hat))^2)
+Rloss.crossfold = mean(((Y - Y.hat) - tau.hat.crossfold * (W - W.hat))^2)
+
+c(Rloss.noclust - Rloss, Rloss.crossfold - Rloss)
+
 
 # * 5.4 Outcome 4: Altruism ---------------------------------------------
 # Note: remove school-level parameters from X matrix due to lack of overlap

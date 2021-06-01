@@ -84,8 +84,8 @@ m.table10.3 <- lm(formula = paste0(
   data = SC_Data)
 
 # HTEs. From social.ols.res in 02_HTEs.R we find the following
-refugee_HTE <- 0.0708095 # Compared to table 10.3 we get a somewhat higher baseline effect
-base_HTE <- 0.0811981 # Notice from table 10.3 we get almost the exact same HTE for refugees
+refugee_HTE <- 0.0725617 # Notice from table 10.3 we get almost the exact same HTE for refugees
+base_HTE <- 0.0424358 # Compared to table 10.3 we get a somewhat higher baseline effect
 
 # 4. Policy Evaluation (AIPW scores) -----------------------------
 # Define the policy: treats every student in a school if the school has a refugee share > 0.1
@@ -146,3 +146,18 @@ print(paste("Difference in policy value estimate:", round(diff.estimate, 3),
 print("\n")
 print(paste0("Refugee-share-based policy cost: ", round(pi_cost, 2), " USD"))
 print(paste0("Random policy cost: ", round(pi_random_cost, 2), " USD"))
+
+
+# Plots
+ggplot(data = SC_Data_schools) + 
+  #geom_histogram(aes(x = refugee_share, fill = factor(b_provinceid)), bins = 25) +
+  geom_density(aes(x = refugee_share, fill = factor(b_provinceid)), alpha = 0.9) +
+  theme_classic() +
+  labs(x = "School percentage of refugee students", y = "") +
+  scale_fill_brewer(palette = "Blues", name = 'Province', direction = -1) +
+  theme(legend.position = c(0.8, 0.8)) +
+  #theme(legend.position = 'bottom') +
+  geom_vline(xintercept = 0.10, linetype = 'dashed', color = 'darkred') +
+  ggtitle('Density of school share of refugee students')
+ggsave(filename = 'Outputs/refugee_share_hist.png', width = 2.8, height = 1.8, units = "in",
+       scale = 1.5)
