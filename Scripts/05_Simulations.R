@@ -18,16 +18,16 @@ get_outcome <- function(base_data, W_column, effect_type, interference ) {
   # Note: interference = 0 is no interference. 
   
   # Base effect
-  y <- .5*(base_data$V1 - .5)
+  y <- .5*(base_data$V1 + 5)
   
   # Get treatment assignment
   W <- base_data[, W_column, with = FALSE][[1]]
   
   # Treatment effect
   if (effect_type == 'ATE') {
-    tau <-  0.2 * W
+    tau <-  5 * W
   } else {
-    tau <-  (base_data$V2 + base_data$V3/2 + .1) * W
+    #tau <-  (base_data$V2 + base_data$V3/2 + .1) * W
     stop('CATE not yet implemented.')
   }
   
@@ -42,20 +42,20 @@ get_outcome <- function(base_data, W_column, effect_type, interference ) {
   y
 }
 
-get_aipw <- function(outcome, treatment, data, p) {
-  fmla <- formula(paste0(outcome, '~', treatment, '+', paste0('V' ,c(1:10), collapse='+')))
+get_aipw <- function(outcome, treatment, data, prob) {
+  fmla <- formula(paste0(outcome, '~', paste0('V' ,c(1:p), collapse='+')))
   if (treatment == 'W_ind') {
     forest <- causal_forest(
       X = model.matrix(fmla, data), W = data[, treatment, with=FALSE][[1]],
-      Y = data[, outcome, with=FALSE][[1]], W.hat = p)
+      Y = data[, outcome, with=FALSE][[1]], W.hat = prob)
   } else {
     forest <- causal_forest(
       X = model.matrix(fmla, data), W = data[, treatment, with=FALSE][[1]],
-      Y = data[, outcome, with=FALSE][[1]], W.hat = p,
+      Y = data[, outcome, with=FALSE][[1]], W.hat = prob,
       clusters = data[, 'school_id', with=FALSE][[1]]
     )
   }
-  average_treatment_effect(forest,target.sample="overlap")
+  average_treatment_effect(forest, target.sample="overlap")
 }
 
 
@@ -80,7 +80,7 @@ SC_Data_classes <- SC_Data[, .(
 
 # 3. Base parameters ----------------------------------
 N_s <- 80
-p <- 10
+p <- 3
 
 # School sizes (heterogeneous / homogeneous)
 N_si_het <- SC_Data_schools$b_schoolsize
@@ -98,7 +98,8 @@ N_ci <- N_ci_het
 
 # Build dataset
 base_data <- data.table(class_id = SC_Data$b_classid, school_id = SC_Data$b_schoolid)
-base_data <- cbind(base_data, matrix(runif( dim(base_data)[1] * p), dim(base_data)[1], p))
+base_data <- cbind(base_data, matrix(runif( dim(base_data)[1] * p, min = 0, max = 100),
+                                     dim(base_data)[1], p))
 N <- dim(base_data)[1]
 base_data <- merge(base_data, SC_Data_schools[, .(b_schoolid, b_schoolsize)], all.x = TRUE, 
                    by.x = 'school_id', by.y = 'b_schoolid')
@@ -141,7 +142,8 @@ exp1_data <- exp1_data[, Y_sch_im1 := get_outcome(exp1_data, W_column = 'W_sch',
                                                  effect_type = 'ATE', interference = -1)]
 
 # Compare confidence intervals
-exp1_intervals <- data.table(outcome = character(), treatment = character(), estimate=numeric(), std.err=numeric())
+exp1_intervals <- data.table(outcome = character(), treatment = character(),
+                             estimate=numeric(), std.err=numeric())
 
 for (base_outcome in c('i0', 'i1', 'im1')) {
   for (base_treatment in c('ind', 'sch')) {
@@ -150,79 +152,11 @@ for (base_outcome in c('i0', 'i1', 'im1')) {
     treatment <- paste0('W_', base_treatment)
     
     # Get AIPW
-    aipw <- get_aipw(outcome = outcome, treatment = treatment, data = exp1_data, p = 0.5)
+    aipw <- get_aipw(outcome = outcome, treatment = treatment, data = exp1_data, prob = 0.5)
     
     # Add to table
     exp1_intervals <- rbind(exp1_intervals, list(outcome, treatment, aipw[1], aipw[2]))
   }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-# 4. Student-randomization with heterogeneous class sizes ---------------------
-ind_data <- ind_data[, Y_sch := .5*(V1 - .5) # base effect
-                     + (V2 + .1)*W # treatment effect
-                     + (b_schoolsize / max(SC_Data$b_schoolsize))*W # school-dependent effect (e.g. assuming larger schools offer more resources)
-                     + .1 * rnorm(N) ] # noise
-
-
-# The below automatically captures the spillover effect as W = W_perc 
-m.base <- lm(formula = paste0('Y_base ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-             data = ind_data)
-
-m.base.sch <- lm(formula = paste0('Y_sch ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-                 data = ind_data)
-
-
-
-
-
-# Interference
-ind_data <- ind_data[, Y_int := .5*(V1 - .5) # base effect
-                     + (V2 + .1)*W * W_perc # treatment + interference effect
-                     + .1 * rnorm(N) ] # noise
-
-m.het.int <- lm(formula = paste0('Y_int ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-                data = ind_data)
-
-# No interference
-ind_data <- ind_data[, Y_nint := .5*(V1 - .5) # base effect
-                     + (V2 + .1)*W  # treatment effect
-                     + .1 * rnorm(N) ] # noise
-
-m.het.nint <- lm(formula = paste0('Y_nint ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-                 data = ind_data)
-
-# Interference + School effects
-ind_data <- ind_data[, Y_int_sch := .5*(V1 - .5) # base effect
-                     + (V2 + .1)*W * W_perc # treatment + interference effect
-                     + (b_schoolsize / max(SC_Data$b_schoolsize))*W
-                     + .1 * rnorm(N) ] # noise
-
-m.het.int.sch <- lm(formula = paste0('Y_int_sch ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-                data = ind_data)
-
-# No interference + School effects
-ind_data <- ind_data[, Y_nint_sch := .5*(V1 - .5) # base effect
-                     + (V2 + .1)*W  # treatment effect
-                     + (b_schoolsize / max(SC_Data$b_schoolsize))*W
-                     + .1 * rnorm(N) ] # noise
-
-m.het.nint.sch <- lm(formula = paste0('Y_nint_sch ~ W + ', paste0('V' ,c(1:10), collapse='+')),
-                 data = ind_data)
-
-# 5. Student-randomization with homogeneous class sizes ---------------------
-#ind_data <- data.table(class_id = rep(1:N_c, times = N_ci), school_id = )
-
-
-# Play with intereference at class/school level
+ggplot(data = exp1_intervals, aes())

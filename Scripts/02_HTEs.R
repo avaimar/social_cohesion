@@ -148,7 +148,7 @@ m.table13.4 <- lm(formula = paste0(
 violence_list <- generate_X_Y_W_C(outcome = 'fsbully_c', covariates = violence.covariates)
 violence.n <- dim(violence_list$X)[1]
 violence.cf <- causal_forest(X = violence_list$X, Y = violence_list$Y, 
-                             W = violence_list$W, clusters = violence_list$C, W.hat = 5)
+                             W = violence_list$W, clusters = violence_list$C, W.hat = .5)
 
 # CATE histogram 
 violence.tau.hat <- predict(violence.cf)$predictions
@@ -187,7 +187,7 @@ partial_dependence_single(selected.covariate = 'refugee',
 social_list <- generate_X_Y_W_C(outcome = social.outcome, covariates = social.covariates)
 social.n <- dim(social_list$X)[1]
 social.cf <- causal_forest(X = social_list$X, Y = social_list$Y, 
-                             W = social_list$W, clusters = social_list$C, W.hat = 5)
+                             W = social_list$W, clusters = social_list$C, W.hat = .5)
 
 # CATE histogram 
 social.tau.hat <- predict(social.cf)$predictions
@@ -260,7 +260,7 @@ social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"
 prosocial_list <- generate_X_Y_W_C(outcome = 'fs_decision_in', covariates = prosocial.covariates)
 prosocial.n <- dim(prosocial_list$X)[1]
 prosocial.cf <- causal_forest(X = prosocial_list$X, Y = prosocial_list$Y, 
-                           W = prosocial_list$W, clusters = prosocial_list$C, W.hat = 5)
+                           W = prosocial_list$W, clusters = prosocial_list$C, W.hat = .5)
 
 # CATE histogram 
 prosocial.tau.hat <- predict(prosocial.cf)$predictions
@@ -305,7 +305,7 @@ partial_dependence_single(selected.covariate = 'braven_sd',
 altruism_list <- generate_X_Y_W_C(outcome = 'fdonate', covariates = altruism.covariates)
 altruism.n <- dim(altruism_list$X)[1]
 altruism.cf <- causal_forest(X = altruism_list$X, Y = altruism_list$Y, 
-                             W = altruism_list$W, clusters = altruism_list$C, W.hat = 5)
+                             W = altruism_list$W, clusters = altruism_list$C, W.hat = .5)
 
 # CATE histogram 
 altruism.tau.hat <- predict(altruism.cf)$predictions
@@ -349,7 +349,7 @@ partial_dependence_single(selected.covariate = 'braven_sd',
 achievement_list <- generate_X_Y_W_C(outcome = 'fturk_sd', covariates = achievement.covariates)
 achievement.n <- dim(achievement_list$X)[1]
 achievement.cf <- causal_forest(X = achievement_list$X, Y = achievement_list$Y, 
-                             W = achievement_list$W, clusters = achievement_list$C, W.hat = 5)
+                             W = achievement_list$W, clusters = achievement_list$C, W.hat = .5)
 
 # CATE histogram 
 achievement.tau.hat <- predict(achievement.cf)$predictions
@@ -433,7 +433,7 @@ school_level_heterogeneity(var_list = altruism_list,
 violence.X.adj <- violence_list$X[, !colnames(violence_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
 violence.cf.noclust <- 
   causal_forest(X = violence.X.adj, 
-                Y = violence_list$Y, W = violence_list$W, W.hat = 5)
+                Y = violence_list$Y, W = violence_list$W, W.hat = .5)
 
 violence.ATE.noclust <- average_treatment_effect(violence.cf.noclust)
 paste("95% CI for the ATE:", round(violence.ATE.noclust[1], 3),
@@ -447,7 +447,7 @@ test_calibration(violence.cf.noclust)
 social.X.adj <- social_list$X[, !colnames(social_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
 social.cf.noclust <- 
   causal_forest(X = social.X.adj, 
-                Y = social_list$Y, W = social_list$W, W.hat = 5)
+                Y = social_list$Y, W = social_list$W, W.hat = .5)
 
 social.ATE.noclust <- average_treatment_effect(social.cf.noclust)
 paste("95% CI for the ATE:", round(social.ATE.noclust[1], 3),
@@ -461,7 +461,7 @@ test_calibration(social.cf.noclust)
 # Note: remove school-level parameters from X matrix due to lack of overlap
 altruism.cf.noclust <- 
   causal_forest(X = altruism_list$X[, !colnames(altruism_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')], 
-                Y = altruism_list$Y, W = altruism_list$W, W.hat = 5)
+                Y = altruism_list$Y, W = altruism_list$W, W.hat = .5)
 
 altruism.ATE.noclust <- average_treatment_effect(altruism.cf.noclust)
 paste("95% CI for the ATE:", round(altruism.ATE.noclust[1], 3),
