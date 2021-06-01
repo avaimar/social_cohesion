@@ -126,3 +126,65 @@ school_level_heterogeneity <- function(var_list, covariates, tau.hat, cf){
   print(coeftest(lm(school.score ~ ., data = school.DF), vcov = vcovHC))
   
 }
+                                 
+  generate_X_Y_W_C_df <- function(outcome, covariates, df, treatment) {
+  # _______________________________________________________
+  # Generates the X, Y, W and cluster components for a given outcome 
+  # and a set of covariates by eliminating missing observations
+  # from the SC_Data dataset. Assumes the treatment column is
+  # named 'treatment', and cluster column is 'b_schoolid.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # Returns:
+  # A list with X, Y, W, C components each including a matrix
+  # or data.table
+  # _______________________________________________________
+  # Filter missing entries
+  SC_table <- as.data.table(df)
+  selected_cols <- c(outcome, covariates, 'treatment')
+  data <- SC_table[, selected_cols, with=FALSE]
+  data <- na.omit(data)
+  write.csv(data,"unfactored.csv")
+  data$b_schoolid = factor(data$b_schoolid)
+  data$bstrata = factor(data$bstrata)
+  
+  # Setup formula
+  fmla <- formula(paste0(outcome, '~', paste(covariates, collapse='+')))
+  X <- model.matrix(fmla, data)
+  W <- data[, 'treatment']
+  #Y <- data[, outcome]
+  Y <- data[, outcome, with=FALSE]
+  C <- data[, 'b_schoolid']
+  
+  # Format Y, W, C as numeric vectors
+  W <- as.numeric(W[[1]])
+  Y <- as.numeric(Y[[1]])
+  C <- as.numeric(C[[1]])
+  list(X = X,Y = Y, W = W, C = C)
+}
+
+run_AIPW <- function(outcome,income,covariates,treatment,df) {
+  # _______________________________________________________
+  # Runs AIPW based on grf on a dataframe.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - income: (str) baseline var name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # - treatment (str) treatment var name
+  # - df: dataframe
+  # Returns:
+  # AIPW estimate and std.err
+  # _______________________________________________________
+  covariates <- c(covariates,income)
+  list_data <- generate_X_Y_W_C_df(outcome,covariates,df,treatment)
+  forest <- causal_forest(
+    X=list_data$X,  
+    W=list_data$W,
+    Y=list_data$Y,
+    clusters = list_data$C,
+    W.hat=.5,  # In randomized settings, set W.hat to the (known) probability of assignment
+    num.trees = 100)
+  forest.ate <- average_treatment_effect(forest,target.sample="overlap")
+  forest.ate
+}
