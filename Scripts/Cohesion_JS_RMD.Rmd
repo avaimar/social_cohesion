@@ -1,0 +1,398 @@
+---
+title: "Cohesion_RMD"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+
+
+```{r functions, cache=TRUE}
+library(glmnet)
+library(data.table)
+library(ggplot2)
+library(grf)
+library(lmtest)
+library(sandwich)
+library(stringr)
+library(matchMulti)
+library(dplyr)
+
+generate_X_Y_W_C_df <- function(outcome, covariates, df, treatment) {
+  # _______________________________________________________
+  # Generates the X, Y, W and cluster components for a given outcome 
+  # and a set of covariates by eliminating missing observations
+  # from the SC_Data dataset. Assumes the treatment column is
+  # named 'treatment', and cluster column is 'b_schoolid.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # Returns:
+  # A list with X, Y, W, C components each including a matrix
+  # or data.table
+  # _______________________________________________________
+  # Filter missing entries
+  SC_table <- as.data.table(df)
+  selected_cols <- c(outcome, covariates, 'treatment')
+  data <- SC_table[, selected_cols, with=FALSE]
+  #data<-SC_table[,selected_cols]
+  data <- na.omit(data)
+  write.csv(data,"unfactored.csv")
+  data$b_schoolid = factor(data$b_schoolid)
+  data$bstrata = factor(data$bstrata)
+  #data <- data[, b_schoolid = factor(b_schoolid)]
+  #data <- data[, bstrata = factor(bstrata)]
+  #print(data[, outcome])
+  #write.csv(data,"fraction_donated.csv")
+  
+  # Setup formula
+  fmla <- formula(paste0(outcome, '~', paste(covariates, collapse='+')))
+  X <- model.matrix(fmla, data)
+  #print("X is coming")
+  #print(X)
+  W <- data[, 'treatment']
+  #Y <- data[, outcome]
+  Y <- data[, outcome, with=FALSE]
+  C <- data[, 'b_schoolid']
+  
+  # Format Y, W, C as numeric vectors
+  W <- as.numeric(W[[1]])
+  Y <- as.numeric(Y[[1]])
+  C <- as.numeric(C[[1]])
+  #print("here")
+  #print(Y)
+  list(X = X,Y = Y, W = W, C = C)
+}
+
+run_AIPW <- function(outcome,income,covariates,treatment,df) {
+  # Get forest predictions.
+  # _______________________________________________________
+  # Runs AIPW based on grf on a dataframe.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - income: (str) baseline var name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # - treatment (str) treatment var name
+  # - df: dataframe
+  # Returns:
+  # AIPW estimate and std.err
+  # _______________________________________________________
+  covariates <- c(covariates,income)
+  list_data <- generate_X_Y_W_C_df(outcome,covariates,df,treatment)
+  #print("new X")
+  #print(list_data)
+  forest <- causal_forest(
+    X=list_data$X,  
+    W=list_data$W,
+    Y=list_data$Y,
+    clusters = list_data$C,
+    W.hat=.5,  # In randomized settings, set W.hat to the (known) probability of assignment
+    num.trees = 100)
+  forest.ate <- average_treatment_effect(forest,target.sample="overlap")
+  print(forest.ate)
+  print("95% CI lower")
+  print(forest.ate["estimate"]-qnorm(.975)*forest.ate["std.err"])
+  print("95% CI upper")
+  print(forest.ate["estimate"]+qnorm(.975)*forest.ate["std.err"])
+}
+
+run_AIPW_without_baseline <- function(outcome,income,covariates,treatment,df) {
+  # Get forest predictions.
+  # _______________________________________________________
+  # Runs AIPW based on grf on a dataframe.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - income: (str) baseline var name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # - treatment (str) treatment var name
+  # - df: dataframe
+  # Returns:
+  # AIPW estimate and std.err
+  # _______________________________________________________
+  #covariates <- c(covariates,income)
+  list_data <- generate_X_Y_W_C_df(outcome,covariates,df,treatment)
+  #print("new X")
+  #print(list_data)
+  forest <- causal_forest(
+    X=list_data$X,  
+    W=list_data$W,
+    Y=list_data$Y,
+    clusters = list_data$C,
+    W.hat=.5,  # In randomized settings, set W.hat to the (known) probability of assignment
+    num.trees = 100)
+  forest.ate <- average_treatment_effect(forest,target.sample="overlap")
+  print(forest.ate)
+  print("95% CI lower")
+  print(forest.ate["estimate"]-qnorm(.975)*forest.ate["std.err"])
+  print("95% CI upper")
+  print(forest.ate["estimate"]+qnorm(.975)*forest.ate["std.err"])
+}
+
+run_AIPW_without_cluster <- function(outcome,income,covariates,treatment,df) {
+  # Get forest predictions.
+  # _______________________________________________________
+  # Runs AIPW based on grf on a dataframe.
+  # Inputs:
+  # - outcome: (str) outcome column name in SC_Data
+  # - income: (str) baseline var name in SC_Data
+  # - covariates: (vector of str) covariate column names
+  # - treatment (str) treatment var name
+  # - df: dataframe
+  # Returns:
+  # AIPW estimate and std.err
+  # _______________________________________________________
+  covariates <- c(covariates,income)
+  list_data <- generate_X_Y_W_C_df(outcome,covariates,df,treatment)
+  #print("new X")
+  #print(list_data)
+  forest <- causal_forest(
+    X=list_data$X,  
+    W=list_data$W,
+    Y=list_data$Y,
+    W.hat=.5,  # In randomized settings, set W.hat to the (known) probability of assignment
+    num.trees = 100)
+  forest.ate <- average_treatment_effect(forest,target.sample="overlap")
+  print(forest.ate)
+  print("95% CI lower")
+  print(forest.ate["estimate"]-qnorm(.975)*forest.ate["std.err"])
+  print("95% CI upper")
+  print(forest.ate["estimate"]+qnorm(.975)*forest.ate["std.err"])
+}
+```
+
+
+```{r AIPWs, cache=TRUE}
+
+cohesion_final <- read.csv("/Users/TestAccount/JS_processed.csv")
+
+covariates <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','b_schoolid')
+
+run_AIPW('ffriend','bfriend',covariates,'treatment',cohesion_final)
+run_AIPW('fsupportself','bsupportself',covariates,'treatment',cohesion_final)
+run_AIPW('fsbully_c','bsbully_c',covariates,'treatment',cohesion_final)
+run_AIPW('fmath_sd','bmath_sd',covariates,'treatment',cohesion_final)
+run_AIPW('fturk_sd','bturk_sd',covariates,'treatment',cohesion_final)
+run_AIPW_without_baseline('fs_decision_out','',covariates,'treatment',cohesion_final)
+
+covariates <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','b_schoolid','a2','inter1')
+
+run_AIPW('fdonate','bdonation_sd',covariates,'treatment',cohesion_final)
+run_AIPW('fdonation_perc','bdonation_sd',covariates,'treatment',cohesion_final)
+
+all_columns_for_schools <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','ffriend','bfriend','fsupportself','bsupportself',
+                'fsbully_c','bsbully_c','fmath_sd','bmath_sd','fturk_sd','bturk_sd','a2','inter1','treatment')
+
+school_level <- students2schools(cohesion_final,all_columns_for_schools,'b_schoolid')
+
+covariates <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','b_schoolid')
+
+covariates <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','b_schoolid')
+
+run_AIPW('ffriend','bfriend',covariates,'treatment',school_level)
+run_AIPW('fsupportself','bsupportself',covariates,'treatment',school_level)
+run_AIPW('fsbully_c','bsbully_c',covariates,'treatment',school_level)
+run_AIPW('fmath_sd','bmath_sd',covariates,'treatment',school_level)
+run_AIPW('fturk_sd','bturk_sd',covariates,'treatment',school_level)
+
+```
+
+
+```{r overlap, cache=TRUE}
+covariates <- c('ageinm' , 'male' , 'bstrata',
+                'refugee' , 'astudent' , 'braven_sd' , 'beyes_sd' , 'b_schoolsize', 
+                'f_csize','bfriend')
+list_data <- generate_X_Y_W_C_df('ffriend', covariates, cohesion_final, 'treatment')
+logit <- cv.glmnet(x=list_data$X, y=list_data$W, family="binomial")
+e.hat <- predict(logit, list_data$X, s = "lambda.min", type="response")
+e.hat.1 <- e.hat[list_data$W==1]
+e.hat.0 <-e.hat[list_data$W==0]
+e.hat.1.df = data.frame(prop= e.hat.1)
+e.hat.1.df$W = "treated"
+e.hat.0.df = data.frame(prop = e.hat.0)
+e.hat.0.df$W = "control"
+e_df <- rbind(e.hat.1.df,e.hat.0.df)
+qplot(prop, data = e_df, geom="histogram",fill=W,main="Propensity Scores",xlab="score",ylab="count")
+```
+
+```{r load data, cache=TRUE}
+cached_data <- read.csv("/Users/TestAccount/cached_GANs.csv")
+```
+
+```{r ggplots, cache=TRUE}
+graphing_AIPW_estimates <- select(cached_data,estimates_t,estimates_t_only,estimates_full,estimates_original,estimates_continuous)
+ggplot(data=graphing_AIPW_estimates, aes(x=estimates_t)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW estimates for configuration 1", x="Estimates", y="Count")
+
+ggplot(data=graphing_AIPW_estimates, aes(x=estimates_t_only)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW estimates for configuration 2", x="Estimates", y="Count")
+
+ggplot(data=graphing_AIPW_estimates, aes(x=estimates_full)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW estimates for configuration 3", x="Estimates", y="Count")
+
+ggplot(data=graphing_AIPW_estimates, aes(x=estimates_original)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW estimates for configuration 4", x="Estimates", y="Count")
+
+ggplot(data=graphing_AIPW_estimates, aes(x=estimates_continuous)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW estimates for configuration 5", x="Estimates", y="Count")
+```
+
+```{r stderrs}
+library(dplyr)
+library(ggplot2)
+graphing_AIPW_stderrs <- select(cached_data,stderrs_t,stderrs_t_only,stderrs_full,stderrs_original,stderrs_continuous)
+
+ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_t)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW standard errors for configuration 1", x="Std Err", y="Count")
+
+ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_t_only)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW standard errors for configuration 2", x="Std Err", y="Count")
+
+ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_full)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW standard errors for configuration 3", x="Std Err", y="Count")
+
+ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_original)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW standard errors for configuration 4", x="Std Err", y="Count")
+
+ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_continuous)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW standard errors for configuration 5", x="Std Err", y="Count")
+```
+
+```{r individualized estimates, cache=TRUE}
+
+graphing_ind_estimates <- select(cached_data,estimates_ind_t,estimates_ind_t_only,estimates_ind_full,estimates_ind_original,estimates_ind_continuous)
+
+ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_t)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW individualized estimates for configuration 1", x="Estimates", y="Count")
+
+ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_t_only)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW individualized estimates for configuration 2", x="Estimates", y="Count")
+
+ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_full)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW individualized estimates for configuration 3", x="Estimates", y="Count")
+
+ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_original)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW individualized estimates for configuration 4", x="Estimates", y="Count")
+
+ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_continuous)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
+  labs(title="AIPW indiviudualized estimates for configuration 5", x="Estimates", y="Count")
+```
+
+```{r individualized std errs, cache=TRUE}
+
+graphing_ind_stderrs <- select(cached_data,stderrs_ind_t,stderrs_ind_t_only,stderrs_ind_full,stderrs_ind_original,stderrs_ind_continuous)
+
+ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_t)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW individualized standard errors for configuration 1", x="Std Err", y="Count")
+
+ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_t_only)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW individualized standard errors for configuration 2", x="Std Err", y="Count")
+  
+ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_full)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW individualized standard errors for configuration 3", x="Std Err", y="Count")
+  
+ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_original)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW individualized standard errors for configuration 4", x="Std Err", y="Count")
+  
+ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_continuous)) + 
+  geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
+  labs(title="AIPW individualized standard errors for configuration 5", x="Std Err", y="Count")
+```
+```{r true values}
+graphing_true_effects <- select(cached_data,true_values_t,true_values_t_only,true_values_full,true_values_original,true_values_continuous)
+
+ggplot(data=graphing_true_effects, aes(x=true_values_t)) + 
+  geom_histogram(col="white") +
+  labs(title="True effects for configuration 1", x="Effect", y="Count")
+
+ggplot(data=graphing_true_effects, aes(x=true_values_t_only)) + 
+  geom_histogram(col="white") +
+  labs(title="True effects for configuration 2", x="Effect", y="Count")
+
+ggplot(data=graphing_true_effects, aes(x=true_values_full)) + 
+  geom_histogram(col="white") +
+  labs(title="True effects for configuration 3", x="Effect", y="Count")
+
+ggplot(data=graphing_true_effects, aes(x=true_values_original)) + 
+  geom_histogram(col="white") +
+  labs(title="True effects for configuration 4", x="Effect", y="Count")
+
+ggplot(data=graphing_true_effects, aes(x=true_values_continuous)) + 
+  geom_histogram(col="white") +
+  labs(title="True effects for configuration 5", x="Effect", y="Count")
+
+```
+
+
+
+```{r RMSE, cache=TRUE}
+RMSE_GANs <- do.call(cbind,list(graphing_AIPW_estimates,graphing_true_effects,graphing_ind_estimates))
+
+RMSE_GANs$t_err=(RMSE_GANs$estimates_t-RMSE_GANs$true_values_t)**2
+RMSE_GANs$t_ind_err=(RMSE_GANs$estimates_ind_t-RMSE_GANs$true_values_t)**2
+
+RMSE_GANs$t_only_err=(RMSE_GANs$estimates_t_only-RMSE_GANs$true_values_t_only)**2
+RMSE_GANs$t_only_ind_err=(RMSE_GANs$estimates_ind_t_only-RMSE_GANs$true_values_t_only)**2
+
+RMSE_GANs$full_err=(RMSE_GANs$estimates_full-RMSE_GANs$true_values_full)**2
+RMSE_GANs$full_ind_err=(RMSE_GANs$estimates_ind_full-RMSE_GANs$true_values_full)**2
+
+RMSE_GANs$original_err=(RMSE_GANs$estimates_original-RMSE_GANs$true_values_original)**2
+RMSE_GANs$original_ind_err=(RMSE_GANs$estimates_ind_original-RMSE_GANs$true_values_original)**2
+
+RMSE_GANs$continuous_err=(RMSE_GANs$estimates_continuous-RMSE_GANs$true_values_continuous)**2
+RMSE_GANs$continuous_ind_err=(RMSE_GANs$estimates_ind_continuous-RMSE_GANs$true_values_continuous)**2
+
+RMSEs_values <- c(sqrt(mean(RMSE_GANs$t_err)),
+sqrt(mean(RMSE_GANs$t_ind_err)),
+sqrt(mean(RMSE_GANs$t_only_err)),
+sqrt(mean(RMSE_GANs$t_only_ind_err)),
+sqrt(mean(RMSE_GANs$full_err)),
+sqrt(mean(RMSE_GANs$full_ind_err)),
+sqrt(mean(RMSE_GANs$original_err)),
+sqrt(mean(RMSE_GANs$original_ind_err)),
+sqrt(mean(RMSE_GANs$continuous_err)),
+sqrt(mean(RMSE_GANs$continuous_ind_err)))
+RMSE_groups <- c('1','1','2','2','3','3','4','4','5','5')
+RMSE_ind_school <- c('school','ind','school','ind','school','ind','school','ind','school','ind')
+RMSE_data<-data.frame(RMSEs_values,RMSE_ind_school,RMSE_groups)
+
+ggplot(data=RMSE_data, aes(x=RMSE_groups, y=RMSEs_values, fill=RMSE_ind_school)) +
+  geom_bar(stat="identity", position=position_dodge()) +labs(x="Configuration",y="RMSE",fill = "randomization") +ggtitle("RMSEs for school and individual estimates")
+```
+
+
