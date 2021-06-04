@@ -44,6 +44,25 @@ altruism.covariates <- c('bdonation_sd', 'a2', 'bstrata', 'b_districtid', contro
 # Outcome 5: Achievement Tests
 achievement.covariates <- c('bturk_sd', 'bstrata', 'b_districtid', controls_vec)
 
+# Add original paper HTEs
+HTE_refugee_comparison <- data.table(main_outcome=character(),outcome=character(), type=character(), estimate=numeric(),stderr=numeric())
+HTE_refugee_comparison <- 
+  rbind(HTE_refugee_comparison, 
+        list('Violence and Antisocial Behavior', 'Student Reported \nBullying', 'Alan et al.', -0.062, 0.03)) # p. 41
+#HTE_refugee_comparison <- 
+#  rbind(HTE_refugee_comparison, 
+#        list('Violence and Antisocial Behavior', 'Teacher Reported Behavioral Conduct', 'Alan et al.', 0.006, 0.09)) # p. 41
+HTE_refugee_comparison <- 
+  rbind(HTE_refugee_comparison, 
+        list('Social Exclusion', 'Host Emotional \nSupport', 'Alan et al.', 0.080, 0.05)) # p. 42
+HTE_refugee_comparison <- 
+  rbind(HTE_refugee_comparison, list('Outcome 3: Prosocial Behavior', 'Trust', 'Alan et al.', 0.079, 0.11)) # p. 43
+HTE_refugee_comparison <- 
+  rbind(HTE_refugee_comparison, list('Altruism', 'Willingness to donate', 'Alan et al.', 0.043, 0.04)) # p. 44
+HTE_refugee_comparison <- 
+  rbind(HTE_refugee_comparison, list('Academic Achievement', 'Turkish', 'Alan et al.', 0.130, 0.05)) # p. 44
+
+
 # 1. Load processed data ------------------------------------
 SC_Data <- haven::read_dta('Data/Processed_Data/JS_Stata_Processed.dta')
 SC_Data <- as.data.table(SC_Data)
@@ -156,11 +175,8 @@ hist(violence.tau.hat, main="Violence outcome: CATE estimates", freq=F)
 
 # Variable importance
 violence.var_imp <- c(variable_importance(violence.cf))
-names(violence.var_imp) <- violence.covariates # TODO What IS NA? The clusters?
+names(violence.var_imp) <- violence.covariates
 violence.sorted_var_imp <- sort(violence.var_imp, decreasing = TRUE)
-
-# Data-driven subgroups
-# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
 
 # Best linear projection
 best_linear_projection(violence.cf, violence_list$X)
@@ -181,6 +197,16 @@ partial_dependence_single(selected.covariate = 'refugee',
                           covariates = violence.covariates, 
                           type = 'binary', X = violence_list$X,
                           causal.forest = violence.cf)
+
+# Regress AIPW scores on group membership
+violence.aipw <- get_AIPW_scores(violence_list, violence.cf)
+
+violence.aipw.ols <- lm(formula = 'violence.aipw ~ refugee', 
+                      data = transform(violence_list$X, aipw.scores = violence.aipw))
+violence.ols.res <- coeftest(violence.aipw.ols, vcov = vcovHC(violence.aipw.ols, "HC2"))
+
+HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
+                                list('Violence and Antisocial Behavior', 'Student Reported \nBullying', 'AIPW', -0.066827, 0.026044))
 
 # * 3.2.2 Outcome 2: Social Exclusion ------------------------------
 # Fit causal tree
@@ -240,6 +266,10 @@ social.aipw.ols <- lm(formula = 'social.aipw ~ refugee',
           data = transform(social_list$X, aipw.scores = social.aipw))
 social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
 
+HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
+                                list('Social Exclusion', 'Host Emotional \nSupport', 'AIPW', 0.0687247, 0.0311875))
+
+
 social.aipw.ols <- lm(formula = 'social.aipw ~ I(braven_sd < -0.6)', 
                       data = transform(social_list$X, aipw.scores = social.aipw))
 social.ols.res <- coeftest(social.aipw.ols, vcov = vcovHC(social.aipw.ols, "HC2"))
@@ -265,11 +295,8 @@ hist(prosocial.tau.hat, main="Prosocial Behavior outcome: CATE estimates", freq=
 
 # Variable importance
 prosocial.var_imp <- c(variable_importance(prosocial.cf))
-names(prosocial.var_imp) <- prosocial.covariates # TODO What IS NA? The clusters?
+names(prosocial.var_imp) <- prosocial.covariates
 prosocial.sorted_var_imp <- sort(prosocial.var_imp, decreasing = TRUE)
-
-# Data-driven subgroups
-# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
 
 # Best linear projection
 best_linear_projection(prosocial.cf, prosocial_list$X)
@@ -296,6 +323,17 @@ partial_dependence_single(selected.covariate = 'braven_sd',
                           type = 'non-binary', X = prosocial_list$X,
                           causal.forest = prosocial.cf, grid_size = 5)
 
+# Regress AIPW scores on group membership
+prosocial.aipw <- get_AIPW_scores(prosocial_list, prosocial.cf)
+
+prosocial.aipw.ols <- lm(formula = 'prosocial.aipw ~ refugee', 
+                        data = transform(prosocial_list$X, aipw.scores = prosocial.aipw))
+prosocial.ols.res <- coeftest(prosocial.aipw.ols, vcov = vcovHC(prosocial.aipw.ols, "HC2"))
+
+HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
+                                list('Outcome 3: Prosocial Behavior', 'Trust', 'AIPW', 0.0018356, 0.0908848))
+
+
 # * 3.2.4 Outcome 4: Altruism -------------------------------
 # * fdonate outcome
 # Fit causal tree
@@ -310,11 +348,8 @@ hist(altruism.tau.hat, main="Altruism outcome: CATE estimates", freq=F)
 
 # Variable importance
 altruism.var_imp <- c(variable_importance(altruism.cf))
-names(altruism.var_imp) <- altruism.covariates # TODO What IS NA? The clusters?
+names(altruism.var_imp) <- altruism.covariates
 altruism.sorted_var_imp <- sort(altruism.var_imp, decreasing = TRUE)
-
-# Data-driven subgroups
-# TODO pending: How to deal with use of clusters argument for folds vs. for clusters?
 
 # Best linear projection
 best_linear_projection(altruism.cf, altruism_list$X)
@@ -341,6 +376,17 @@ partial_dependence_single(selected.covariate = 'braven_sd',
                           type = 'non-binary', X = altruism_list$X,
                           causal.forest = altruism.cf, grid_size = 5)
 
+# Regress AIPW scores on group membership
+altruism.aipw <- get_AIPW_scores(altruism_list, altruism.cf)
+
+altruism.aipw.ols <- lm(formula = 'altruism.aipw ~ refugee', 
+                        data = transform(altruism_list$X, aipw.scores = altruism.aipw))
+altruism.ols.res <- coeftest(altruism.aipw.ols, vcov = vcovHC(altruism.aipw.ols, "HC2"))
+
+HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
+                                list('Altruism', 'Willingness to donate', 'AIPW', -0.033102 , 0.025657))
+
+
 # * 3.2.5 Outcome 5: Achievement Tests --------------------------------
 # Fit causal tree
 achievement_list <- generate_X_Y_W_C(outcome = 'fturk_sd', covariates = achievement.covariates)
@@ -354,11 +400,8 @@ hist(achievement.tau.hat, main="Achievement outcome: CATE estimates", freq=F)
 
 # Variable importance
 achievement.var_imp <- c(variable_importance(achievement.cf))
-names(achievement.var_imp) <- achievement.covariates # TODO What IS NA? The clusters?
+names(achievement.var_imp) <- achievement.covariates
 achievement.sorted_var_imp <- sort(achievement.var_imp, decreasing = TRUE)
-
-# Data-driven subgroups
-# TODO pending
 
 # Best linear projection
 best_linear_projection(achievement.cf, achievement_list$X)
@@ -384,6 +427,17 @@ partial_dependence_single(selected.covariate = 'braven_sd',
                           covariates = achievement.covariates, 
                           type = 'non-binary', X = achievement_list$X,
                           causal.forest = achievement.cf, grid_size = 5)
+
+# Regress AIPW scores on group membership
+achievement.aipw <- get_AIPW_scores(achievement_list, achievement.cf)
+
+achievement.aipw.ols <- lm(formula = 'achievement.aipw ~ refugee', 
+                        data = transform(achievement_list$X, aipw.scores = achievement.aipw))
+achievement.ols.res <- coeftest(achievement.aipw.ols, vcov = vcovHC(achievement.aipw.ols, "HC2"))
+
+HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
+                                list('Academic Achievement', 'Turkish', 'AIPW', 0.063745, 0.055048))
+
 
 # 4. School level heterogeneity Wager & Athey (2019; p. 9) --------
 # Create school-level covariates
@@ -423,8 +477,6 @@ school_level_heterogeneity(var_list = altruism_list,
                            tau.hat = altruism.tau.hat, cf = altruism.cf)
 
 # 5. Identify the role of cluster-robustness as in Wager & Athey (2019; p. 10) -------------
-# Note: in the paper they add w.hat and y.hat estimates using the clusters, not sure why
-# and also tune.parameters = "all"
 
 # * 5.1 Outcome 1: Student and Teacher Reports of Violence and Antisocial Behavior -------
 violence.X.adj <- violence_list$X[, !colnames(violence_list$X) %in% c("b_schoolsize", 'bstrata', 'b_districtid', 'f_csize')]
@@ -506,4 +558,16 @@ paste("95% CI for the ATE:", round(altruism.ATE.noclust[1], 3),
       "+/-", round(qnorm(0.975) * altruism.ATE.noclust[2], 3))
 
 test_calibration(altruism.cf.noclust)
+
+# Plot AIPW comparison
+ggplot(HTE_refugee_comparison, aes(x= outcome)) +
+  geom_errorbar(aes(ymin= estimate - stderr, ymax= estimate+stderr, color = type, group = type), 
+                position=position_dodge(), width =0.3) +
+  theme_classic() +
+  geom_hline(yintercept = 0) + 
+  labs(x = "Outcome") +
+  scale_color_manual(values = c('steelblue4', 'skyblue2'), name = '') + 
+  theme(legend.position = 'bottom')
+ggsave(filename = 'Outputs/AIPW_Refugee_comp.png', width = 7.5, height = 2.5, units = "in",
+       scale = 1.2)
 
