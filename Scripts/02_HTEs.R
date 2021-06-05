@@ -48,7 +48,7 @@ achievement.covariates <- c('bturk_sd', 'bstrata', 'b_districtid', controls_vec)
 HTE_refugee_comparison <- data.table(main_outcome=character(),outcome=character(), type=character(), estimate=numeric(),stderr=numeric())
 HTE_refugee_comparison <- 
   rbind(HTE_refugee_comparison, 
-        list('Violence and Antisocial Behavior', 'Student Reported \nBullying', 'Alan et al.', -0.062, 0.03)) # p. 41
+        list('Violence and Antisocial Behavior', 'In-class \nbullying', 'Alan et al.', -0.062, 0.03)) # p. 41
 #HTE_refugee_comparison <- 
 #  rbind(HTE_refugee_comparison, 
 #        list('Violence and Antisocial Behavior', 'Teacher Reported Behavioral Conduct', 'Alan et al.', 0.006, 0.09)) # p. 41
@@ -206,7 +206,7 @@ violence.aipw.ols <- lm(formula = 'violence.aipw ~ refugee',
 violence.ols.res <- coeftest(violence.aipw.ols, vcov = vcovHC(violence.aipw.ols, "HC2"))
 
 HTE_refugee_comparison <- rbind(HTE_refugee_comparison, 
-                                list('Violence and Antisocial Behavior', 'Student Reported \nBullying', 'AIPW', -0.066827, 0.026044))
+                                list('Violence and Antisocial Behavior', 'In-class \nbullying', 'AIPW', -0.066827, 0.026044))
 
 # * 3.2.2 Outcome 2: Social Exclusion ------------------------------
 # Fit causal tree
