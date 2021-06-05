@@ -9,7 +9,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+This section represents Jake Silberg's code for the Econ 293 final project, followed by the GANs colab notebook
 
 
 
@@ -41,23 +41,18 @@ generate_X_Y_W_C_df <- function(outcome, covariates, df, treatment) {
   SC_table <- as.data.table(df)
   selected_cols <- c(outcome, covariates, 'treatment')
   data <- SC_table[, selected_cols, with=FALSE]
-  #data<-SC_table[,selected_cols]
   data <- na.omit(data)
   write.csv(data,"unfactored.csv")
   data$b_schoolid = factor(data$b_schoolid)
   data$bstrata = factor(data$bstrata)
-  #data <- data[, b_schoolid = factor(b_schoolid)]
-  #data <- data[, bstrata = factor(bstrata)]
-  #print(data[, outcome])
-  #write.csv(data,"fraction_donated.csv")
+
   
   # Setup formula
   fmla <- formula(paste0(outcome, '~', paste(covariates, collapse='+')))
   X <- model.matrix(fmla, data)
-  #print("X is coming")
-  #print(X)
+
   W <- data[, 'treatment']
-  #Y <- data[, outcome]
+
   Y <- data[, outcome, with=FALSE]
   C <- data[, 'b_schoolid']
   
@@ -65,8 +60,7 @@ generate_X_Y_W_C_df <- function(outcome, covariates, df, treatment) {
   W <- as.numeric(W[[1]])
   Y <- as.numeric(Y[[1]])
   C <- as.numeric(C[[1]])
-  #print("here")
-  #print(Y)
+
   list(X = X,Y = Y, W = W, C = C)
 }
 
@@ -231,33 +225,49 @@ qplot(prop, data = e_df, geom="histogram",fill=W,main="Propensity Scores",xlab="
 ```
 
 ```{r load data, cache=TRUE}
-cached_data <- read.csv("/Users/TestAccount/cached_GANs.csv")
+#cached_data <- read.csv("/Users/TestAccount/cached_GANs.csv")
+cached_data <-read.csv("/Users/TestAccount/GANs-saved-backup.csv")
 ```
 
+Note that the code to import and run AIPW on our 10,000 datasets takes several hours to run, so is included separately to avoid knitting issues. 
+
 ```{r ggplots, cache=TRUE}
+library(dplyr)
+library(ggplot2)
 graphing_AIPW_estimates <- select(cached_data,estimates_t,estimates_t_only,estimates_full,estimates_original,estimates_continuous)
+
 ggplot(data=graphing_AIPW_estimates, aes(x=estimates_t)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW estimates for configuration 1", x="Estimates", y="Count")
+ggsave(filename = 'AIPWschool1.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_estimates, aes(x=estimates_t_only)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW estimates for configuration 2", x="Estimates", y="Count")
+ggsave(filename = 'AIPWschool2.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_estimates, aes(x=estimates_full)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW estimates for configuration 3", x="Estimates", y="Count")
+ggsave(filename = 'AIPWschool3.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_estimates, aes(x=estimates_original)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW estimates for configuration 4", x="Estimates", y="Count")
+ggsave(filename = 'AIPWschool4.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_estimates, aes(x=estimates_continuous)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW estimates for configuration 5", x="Estimates", y="Count")
+ggsave(filename = 'AIPWschool5.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 ```
 
-```{r stderrs}
+```{r stderrs, cache=TRUE}
 library(dplyr)
 library(ggplot2)
 graphing_AIPW_stderrs <- select(cached_data,stderrs_t,stderrs_t_only,stderrs_full,stderrs_original,stderrs_continuous)
@@ -265,22 +275,32 @@ graphing_AIPW_stderrs <- select(cached_data,stderrs_t,stderrs_t_only,stderrs_ful
 ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_t)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW standard errors for configuration 1", x="Std Err", y="Count")
+ggsave(filename = 'AIPWerr1.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_t_only)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW standard errors for configuration 2", x="Std Err", y="Count")
+ggsave(filename = 'AIPWerr2.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_full)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW standard errors for configuration 3", x="Std Err", y="Count")
+ggsave(filename = 'AIPWerr3.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_original)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW standard errors for configuration 4", x="Std Err", y="Count")
+ggsave(filename = 'AIPWerr4.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_AIPW_stderrs, aes(x=stderrs_continuous)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW standard errors for configuration 5", x="Std Err", y="Count")
+ggsave(filename = 'AIPWerr5.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 ```
 
 ```{r individualized estimates, cache=TRUE}
@@ -290,22 +310,33 @@ graphing_ind_estimates <- select(cached_data,estimates_ind_t,estimates_ind_t_onl
 ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_t)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW individualized estimates for configuration 1", x="Estimates", y="Count")
+ggsave(filename = 'AIPWind1.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_t_only)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW individualized estimates for configuration 2", x="Estimates", y="Count")
+ggsave(filename = 'AIPWind2.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
+
 
 ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_full)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW individualized estimates for configuration 3", x="Estimates", y="Count")
+ggsave(filename = 'AIPWind3.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_original)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW individualized estimates for configuration 4", x="Estimates", y="Count")
+ggsave(filename = 'AIPWind4.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_ind_estimates, aes(x=estimates_ind_continuous)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.05081058,color = "blue", size =1) +
   labs(title="AIPW indiviudualized estimates for configuration 5", x="Estimates", y="Count")
+ggsave(filename = 'AIPWind5.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 ```
 
 ```{r individualized std errs, cache=TRUE}
@@ -315,45 +346,65 @@ graphing_ind_stderrs <- select(cached_data,stderrs_ind_t,stderrs_ind_t_only,stde
 ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_t)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW individualized standard errors for configuration 1", x="Std Err", y="Count")
+ggsave(filename = 'AIPWinderr1.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_t_only)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW individualized standard errors for configuration 2", x="Std Err", y="Count")
+ggsave(filename = 'AIPWinderr2.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
   
 ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_full)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW individualized standard errors for configuration 3", x="Std Err", y="Count")
+ggsave(filename = 'AIPWinderr3.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
   
 ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_original)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW individualized standard errors for configuration 4", x="Std Err", y="Count")
+ggsave(filename = 'AIPWinderr4.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
   
 ggplot(data=graphing_ind_stderrs, aes(x=stderrs_ind_continuous)) + 
   geom_histogram(col="white") + geom_vline(xintercept=0.01797406,color = "blue", size =1) +
   labs(title="AIPW individualized standard errors for configuration 5", x="Std Err", y="Count")
+ggsave(filename = 'AIPWinderr5.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 ```
-```{r true values}
+```{r true values, cache=TRUE}
 graphing_true_effects <- select(cached_data,true_values_t,true_values_t_only,true_values_full,true_values_original,true_values_continuous)
 
 ggplot(data=graphing_true_effects, aes(x=true_values_t)) + 
   geom_histogram(col="white") +
   labs(title="True effects for configuration 1", x="Effect", y="Count")
+ggsave(filename = 'TrueEffects1.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_true_effects, aes(x=true_values_t_only)) + 
   geom_histogram(col="white") +
   labs(title="True effects for configuration 2", x="Effect", y="Count")
+ggsave(filename = 'TrueEffects2.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_true_effects, aes(x=true_values_full)) + 
   geom_histogram(col="white") +
   labs(title="True effects for configuration 3", x="Effect", y="Count")
+ggsave(filename = 'TrueEffects3.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_true_effects, aes(x=true_values_original)) + 
   geom_histogram(col="white") +
   labs(title="True effects for configuration 4", x="Effect", y="Count")
+ggsave(filename = 'TrueEffects4.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ggplot(data=graphing_true_effects, aes(x=true_values_continuous)) + 
   geom_histogram(col="white") +
   labs(title="True effects for configuration 5", x="Effect", y="Count")
+ggsave(filename = 'TrueEffects5.png', width = 3.5, height = 3, units = "in",
+       scale = 1.5)
 
 ```
 
@@ -394,5 +445,6 @@ RMSE_data<-data.frame(RMSEs_values,RMSE_ind_school,RMSE_groups)
 ggplot(data=RMSE_data, aes(x=RMSE_groups, y=RMSEs_values, fill=RMSE_ind_school)) +
   geom_bar(stat="identity", position=position_dodge()) +labs(x="Configuration",y="RMSE",fill = "randomization") +ggtitle("RMSEs for school and individual estimates")
 ```
+
 
 
